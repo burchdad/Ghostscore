@@ -418,14 +418,19 @@ See `CONTRIBUTING.md` for development and PR guidelines.
 - Secrets management / GitHub Secrets + `.env` guidance
 - CI: test coverage thresholds and artifact uploads (coverage.xml) — coverage thresholds are now enforced in CI (backend 80%).
 - Dependabot configured in `.github/dependabot.yml` to keep dependencies up-to-date weekly.
-- Add integration/e2e tests (Playwright)
+- Add integration/e2e tests (Playwright) — Playwright CI workflow added; see `.github/workflows/playwright.yml`
 - Monitoring: add basic Prometheus metrics + health endpoints
 - Docker image publishing and release workflow
 - Harden startup: migrations are opt-in via `MIGRATE_ON_STARTUP`, consider adding feature flags
 
-Phase 2 is scoped and locked in — see [PHASE2.md](PHASE2.md) for milestones and acceptance criteria.
+Phase 2 is scoped and locked in — see [PHASE2.md](PHASE2.md) for milestones and [PHASE2_COMPLETION.md](PHASE2_COMPLETION.md) for completion status.
 
-If you want, I can now scaffold issue templates and a project board for Phase 2.
+**Phase 2 Execution**: Run the following to create issues and project board:
+```bash
+export GITHUB_TOKEN=<your_personal_access_token>
+python scripts/create_phase2_issues.py
+python scripts/create_project_board.py
+```
 
 ---
 
