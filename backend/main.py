@@ -10,6 +10,7 @@ import logging
 
 from scoring.fico_engine import FicoEngine
 from scoring.scenarios import ScenarioEngine
+from scoring.optimizer import find_best_actions, estimate_score_improvement_timeline
 from models.database import get_db, init_db
 from models import crud
 from models.db_models import Account as AccountModel, Derogatory as DerogatoryModel
@@ -304,6 +305,66 @@ def get_recommendations(profile: CreditProfile):
     try:
         recommendations = scenario_engine.get_recommendations(profile)
         return recommendations
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/optimize")
+def optimize_credit_profile(profile: CreditProfile):
+    """
+    Find the best actions to improve credit score.
+    
+    Uses the optimizer engine to:
+    1. Rank actions by score impact
+    2. Estimate improvement timeline
+    3. Identify quick wins
+    """
+    try:
+        # Convert profile to dict for optimizer
+        profile_dict = {
+            "accounts": [
+                {
+                    "id": acc.id,
+                    "type": acc.type,
+                    "name": acc.name,
+                    "balance": acc.balance,
+                    "limit": acc.limit,
+                    "open_date": str(acc.open_date) if acc.open_date else None,
+                    "status": acc.status,
+                }
+                for acc in profile.accounts
+            ],
+            "derogatories": [
+                {
+                    "type": derog.type,
+                    "date": str(derog.date) if derog.date else None,
+                    "details": derog.details,
+                }
+                for derog in profile.derogatories
+            ] if profile.derogatories else [],
+        }
+        
+        # Find best actions
+        actions = find_best_actions(profile_dict, fico_engine.calculate_score)
+        
+        # Estimate improvement timeline
+        timeline = estimate_score_improvement_timeline(
+            profile_dict,
+            actions,
+            fico_engine.calculate_score
+        )
+        
+        # Get current score
+        current_score = fico_engine.calculate_score(profile_dict)
+        
+        return {
+            "current_score": current_score,
+            "recommended_actions": actions,
+            "improvement_timeline": timeline,
+            "total_potential_gain": sum(
+                a.get("estimated_score_gain", 0) for a in actions
+            ),
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
