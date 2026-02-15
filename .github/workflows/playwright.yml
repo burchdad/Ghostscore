@@ -1,0 +1,91 @@
+name: Playwright E2E
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+    paths:
+      - 'frontend/e2e/**'
+      - 'frontend/**'
+      - 'backend/**'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: ghostscore
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do echo "waiting for postgres"; sleep 1; done
+
+      - name: Apply alembic migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ghostscore
+        run: |
+          alembic -c backend/alembic.ini upgrade head
+
+      - name: Start backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ghostscore
+        run: |
+          nohup uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
+          sleep 2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: |
+          npm ci
+
+      - name: Build & start frontend
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: |
+          npm run build
+          nohup npm run start &
+          sleep 2
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright tests
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+        run: npx playwright test --reporter=github
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report

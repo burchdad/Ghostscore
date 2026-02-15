@@ -1,0 +1,15 @@
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.isort]
+profile = 'black'
+
+[tool.ruff]
+line-length = 88
+select = ['E', 'F', 'W', 'I', 'C', 'Q']
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-q --cov=backend --cov-report=term"
+testpaths = ["backend"]

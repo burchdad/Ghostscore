@@ -1,0 +1,14 @@
+Creditor: Chase Sapphire Preferred
+Type: Credit Card
+Current Balance: $2,500
+Credit Limit: $5,000
+Date Opened: 01/15/2020
+Status: Current
+
+Chase Sapphire Preferred - Current Balance: $2,500 - Opened: 01/15/2020
+
+Creditor: Car Loan
+Type: Auto Loan
+Current Balance: $15,000
+Date Opened: 03/10/2021
+Status: Current
