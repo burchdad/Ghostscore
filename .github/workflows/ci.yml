@@ -36,7 +36,7 @@ jobs:
           pytest backend --maxfail=1 -q --cov=backend --cov-report=xml --cov-fail-under=80
 
       - name: Upload backend coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: backend-coverage
           path: coverage.xml
@@ -58,7 +58,7 @@ jobs:
           npm ci
           npm run test -- --coverage
       - name: Upload frontend coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-coverage
           path: frontend/coverage
