@@ -130,6 +130,12 @@ def test_signup_login_and_protected_endpoint(monkeypatch):
     body = resp2.json()
     assert body.get("email") == "test@example.com"
 
-    # Note: token endpoint requires form parsing (`python-multipart`) which may
-    # not be available in this environment. We already validated token-based
-    # protected access above, so skip re-testing `/auth/token` here.
+    # Login via token endpoint (form data)
+    resp3 = client.post(
+        "/auth/token",
+        data={"username": "test@example.com", "password": "secret123"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert resp3.status_code == 200, resp3.text
+    data3 = resp3.json()
+    assert "access_token" in data3
