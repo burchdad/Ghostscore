@@ -9,6 +9,7 @@ Uses a 4-layer architecture:
 """
 
 from typing import Dict, Any, Union
+from datetime import datetime, timedelta
 from .feature_engine import extract_features
 from .scorecards import determine_scorecard, get_scorecard_description
 from .subscores import (
@@ -19,6 +20,43 @@ from .subscores import (
     calculate_mix_score
 )
 from .aggregator import aggregate_score, calculate_score_details
+
+
+class DictAccount:
+    """Adapter to make dict accounts compatible with ORM-based subscores functions."""
+    def __init__(self, acc_dict: Dict):
+        self.status = acc_dict.get('account_status', acc_dict.get('status', 'current'))
+        self.type = acc_dict.get('account_type', acc_dict.get('type', 'other'))
+        self.balance = float(acc_dict.get('balance', 0))
+        self.limit = acc_dict.get('credit_limit', acc_dict.get('limit', None))
+        if self.limit:
+            self.limit = float(self.limit)
+        
+        # Convert months_open to open_date (approximate)
+        months_open = acc_dict.get('months_open', 0)
+        self.open_date = (datetime.now() - timedelta(days=int(months_open * 30.44))).date()
+        
+        # Optional attributes
+        self.name = acc_dict.get('issuer', '')
+        self.id = acc_dict.get('id', None)
+
+
+class DictDerogatory:
+    """Adapter to make dict derogatories compatible with ORM-based subscores functions."""
+    def __init__(self, derog_dict: Dict):
+        self.type = derog_dict.get('type', 'unknown')
+        
+        # Parse date string if needed
+        date_val = derog_dict.get('date', datetime.now())
+        if isinstance(date_val, str):
+            try:
+                self.date = datetime.fromisoformat(date_val).date()
+            except:
+                self.date = datetime.now().date()
+        else:
+            self.date = date_val if hasattr(date_val, 'date') else date_val.date() if hasattr(date_val, 'date') else datetime.now().date()
+        
+        self.details = derog_dict.get('details', '')
 
 
 class FicoEngine:
@@ -91,8 +129,11 @@ class FicoEngine:
         
         # Extract accounts/derogatories - support both dict and ORM object
         if isinstance(credit_profile, dict):
-            accounts = credit_profile.get('accounts', [])
-            derogatories = credit_profile.get('derogatories', [])
+            accounts_raw = credit_profile.get('accounts', [])
+            derogatories_raw = credit_profile.get('derogatories', [])
+            # Normalize dict accounts to DictAccount objects (compatible with subscores functions)
+            accounts = [DictAccount(acc) if isinstance(acc, dict) else acc for acc in accounts_raw]
+            derogatories = [DictDerogatory(d) if isinstance(d, dict) else d for d in derogatories_raw]
         else:
             accounts = getattr(credit_profile, 'accounts', [])
             derogatories = getattr(credit_profile, 'derogatories', [])

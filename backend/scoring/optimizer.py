@@ -37,13 +37,17 @@ def find_best_actions(
     accounts = profile.get("accounts", [])
     
     # === PAYDOWN RECOMMENDATIONS ===
-    for account in accounts:
+    for account_idx, account in enumerate(accounts):
+        # Support both "type" and "account_type" field names
+        account_type = account.get("account_type", account.get("type", "other"))
+        
         # Only optimize revolving accounts (credit cards)
-        if account.get("type") != "credit_card":
+        if account_type != "credit_card":
             continue
         
         balance = float(account.get("balance", 0))
-        limit = float(account.get("limit", 1))
+        credit_limit = account.get("credit_limit", account.get("limit", 1))
+        limit = float(credit_limit) if credit_limit else 1
         
         if limit == 0:
             continue
@@ -56,12 +60,23 @@ def find_best_actions(
         
         paydown_amount = balance - target_balance
         
-        # Simulate paydown
+        # Simulate paydown (by index if no ID, else by ID)
         simulated = deepcopy(profile)
-        for sim_acc in simulated.get("accounts", []):
-            if sim_acc.get("id") == account.get("id"):
-                sim_acc["balance"] = target_balance
-                break
+        account_id = account.get("id")
+        matched = False
+        
+        if account_id:
+            # Match by ID
+            for sim_acc in simulated.get("accounts", []):
+                if sim_acc.get("id") == account_id:
+                    sim_acc["balance"] = target_balance
+                    matched = True
+                    break
+        
+        if not matched:
+            # Match by index
+            if account_idx < len(simulated.get("accounts", [])):
+                simulated["accounts"][account_idx]["balance"] = target_balance
         
         try:
             new_score = calculate_score_func(simulated)
@@ -73,18 +88,22 @@ def find_best_actions(
             recommendations.append({
                 "type": "paydown",
                 "priority": "high" if gain > 30 else "medium" if gain > 15 else "low",
-                "account_id": account.get("id"),
-                "account_name": account.get("name", "Unknown Account"),
-                "account_type": account.get("type"),
+                "account_id": account_id,
+                "account_name": account.get("issuer", account.get("name", "Unknown Account")),
+                "account_type": account_type,
                 "current_balance": balance,
                 "target_balance": target_balance,
                 "paydown_amount": paydown_amount,
-                "estimated_score_gain": gain,
+                "estimated_gain": gain,
+                "description": f"Pay down {account.get('issuer', 'account')} balance to ${target_balance:.0f}",
             })
     
     # === CLOSE/PAY OFF RECOMMENDATIONS ===
-    for account in accounts:
-        if account.get("type") not in ("credit_card", "personal_loan"):
+    for account_idx, account in enumerate(accounts):
+        # Support both "type" and "account_type" field names
+        account_type = account.get("account_type", account.get("type", "other"))
+        
+        if account_type not in ("credit_card", "personal_loan"):
             continue
         
         balance = float(account.get("balance", 0))
@@ -94,10 +113,21 @@ def find_best_actions(
         
         # Simulate paying off completely
         simulated = deepcopy(profile)
-        for sim_acc in simulated.get("accounts", []):
-            if sim_acc.get("id") == account.get("id"):
-                sim_acc["balance"] = 0
-                break
+        account_id = account.get("id")
+        matched = False
+        
+        if account_id:
+            # Match by ID
+            for sim_acc in simulated.get("accounts", []):
+                if sim_acc.get("id") == account_id:
+                    sim_acc["balance"] = 0
+                    matched = True
+                    break
+        
+        if not matched:
+            # Match by index
+            if account_idx < len(simulated.get("accounts", [])):
+                simulated["accounts"][account_idx]["balance"] = 0
         
         try:
             new_score = calculate_score_func(simulated)
@@ -109,13 +139,14 @@ def find_best_actions(
             recommendations.append({
                 "type": "payoff",
                 "priority": "high" if gain > 40 else "medium" if gain > 20 else "low",
-                "account_id": account.get("id"),
-                "account_name": account.get("name", "Unknown Account"),
-                "account_type": account.get("type"),
+                "account_id": account_id,
+                "account_name": account.get("issuer", account.get("name", "Unknown Account")),
+                "account_type": account_type,
                 "current_balance": balance,
                 "target_balance": 0,
                 "paydown_amount": balance,
-                "estimated_score_gain": gain,
+                "estimated_gain": gain,
+                "description": f"Pay off {account.get('issuer', 'account')} completely (${balance:.0f})",
             })
     
     # === DEROGATORY REMOVAL (if applicable) ===
@@ -142,13 +173,13 @@ def find_best_actions(
                 "priority": "high",
                 "description": f"Remove {len(derogatories)} derogatory mark(s)",
                 "derogatory_breakdown": derog_summary,
-                "estimated_score_gain": gain,
+                "estimated_gain": gain,
                 "note": "Derogatory marks can be disputed or may age out.",
             })
     
     # Sort by score gain (descending)
     recommendations.sort(
-        key=lambda x: x.get("estimated_score_gain", 0),
+        key=lambda x: x.get("estimated_gain", 0),
         reverse=True
     )
     
@@ -185,16 +216,16 @@ def estimate_score_improvement_timeline(
     
     if not recommendations:
         return [
-            {"week": 0, "estimated_score": current_score, "action": "Current score"},
-            {"week": 52, "estimated_score": current_score, "action": "No improvements planned"},
+            {"week": 0, "score": current_score, "milestone": "Current score"},
+            {"week": 52, "score": current_score, "milestone": "No improvements planned"},
         ]
     
     # Calculate total potential gain
-    total_gain = sum(r.get("estimated_score_gain", 0) for r in recommendations)
+    total_gain = sum(r.get("estimated_gain", 0) for r in recommendations)
     
     if total_gain <= 0:
         return [
-            {"week": 0, "estimated_score": current_score, "action": "Current score"},
+            {"week": 0, "score": current_score, "milestone": "Current score"},
         ]
     
     # Distribute gains over time (assume 2-3 month full effect, ramping up)
@@ -205,26 +236,26 @@ def estimate_score_improvement_timeline(
     # Week 16: 100% of gains (3-4 months)
     
     timeline = [
-        {"week": 0, "estimated_score": current_score, "action": "Current score"},
+        {"week": 0, "score": current_score, "milestone": "Current score"},
         {
             "week": 2,
-            "estimated_score": int(current_score + total_gain * 0.10),
-            "action": "Early gains from credit mix changes"
+            "score": int(current_score + total_gain * 0.10),
+            "milestone": "Early gains from credit mix changes"
         },
         {
             "week": 4,
-            "estimated_score": int(current_score + total_gain * 0.30),
-            "action": "First paydowns reflected"
+            "score": int(current_score + total_gain * 0.30),
+            "milestone": "First paydowns reflected"
         },
         {
             "week": 8,
-            "estimated_score": int(current_score + total_gain * 0.60),
-            "action": "Major improvements showing"
+            "score": int(current_score + total_gain * 0.60),
+            "milestone": "Major improvements showing"
         },
         {
             "week": 16,
-            "estimated_score": int(current_score + total_gain),
-            "action": "Full effect of all recommendations"
+            "score": int(current_score + total_gain),
+            "milestone": "Full effect of all recommendations"
         },
     ]
     
@@ -249,7 +280,7 @@ def get_quick_wins(
     quick_wins = []
     
     for rec in recommendations:
-        gain = rec.get("estimated_score_gain", 0)
+        gain = rec.get("estimated_gain", 0)
         rec_type = rec.get("type")
         
         # Paydowns under $500 with >15 point gain are quick wins
