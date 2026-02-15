@@ -11,6 +11,12 @@ import logging
 from scoring.fico_engine import FicoEngine
 from scoring.scenarios import ScenarioEngine
 from scoring.optimizer import find_best_actions, estimate_score_improvement_timeline
+from scoring.scenario_analyzer import (
+    calculate_confidence_intervals,
+    simulate_multi_action,
+    find_optimal_action_sequence,
+    generate_action_priority_matrix,
+)
 from models.database import get_db, init_db
 from models import crud
 from models.db_models import Account as AccountModel, Derogatory as DerogatoryModel
@@ -376,6 +382,132 @@ def optimize_credit_profile(profile: CreditProfile):
             "recommended_actions": actions,
             "improvement_timeline": timeline,
             "total_potential_gain": total_gain,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/scenarios/multi-action")
+def simulate_multi_action_scenario(data: dict):
+    """
+    Simulate multiple credit improvement actions applied simultaneously.
+    
+    Returns:
+        {
+            "original_score": int,
+            "simulated_score": int,
+            "actual_gain": int,
+            "actions_applied": [...],
+            "timeline": [...]
+        }
+    """
+    try:
+        profile_dict = data.get("profile", {})
+        action_indices = data.get("action_indices", [])
+        
+        # Get optimizer recommendations
+        actions = find_best_actions(profile_dict, fico_engine.calculate_score)
+        
+        # Simulate multi-action scenario
+        result = simulate_multi_action(
+            profile_dict,
+            action_indices,
+            actions,
+            fico_engine.calculate_score
+        )
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/scenarios/confidence-intervals")
+def get_confidence_intervals(data: dict):
+    """
+    Calculate optimistic, realistic, and conservative score projections.
+    
+    Returns:
+        {
+            "optimistic": {"score": int, "gain": int, "confidence": float},
+            "realistic": {"score": int, "gain": int, "confidence": float},
+            "conservative": {"score": int, "gain": int, "confidence": float}
+        }
+    """
+    try:
+        profile_dict = data.get("profile", {})
+        
+        # Get current score
+        current_score_info = fico_engine.calculate_full_score(profile_dict)
+        current_score = current_score_info['score']
+        
+        # Get recommendations
+        actions = find_best_actions(profile_dict, fico_engine.calculate_score)
+        
+        # Calculate confidence intervals
+        scenarios = calculate_confidence_intervals(
+            current_score,
+            actions,
+            fico_engine.calculate_score
+        )
+        
+        return {
+            "current_score": current_score,
+            "optimistic": scenarios['optimistic'],
+            "realistic": scenarios['realistic'],
+            "conservative": scenarios['conservative'],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/scenarios/optimal-sequence")
+def get_optimal_action_sequence(data: dict):
+    """
+    Find the optimal sequence of actions to maximize score gain efficiency.
+    
+    Considers both score impact and implementation effort/cost.
+    
+    Returns:
+        {
+            "recommended_sequence": [action_indices],
+            "expected_gain": int,
+            "efficiency_score": float,
+            "priority_matrix": {
+                "quick_wins": [...],
+                "strategic": [...],
+                "fill_ins": [...],
+                "avoid": [...]
+            }
+        }
+    """
+    try:
+        profile_dict = data.get("profile", {})
+        max_budget = data.get("max_budget", None)
+        
+        # Get recommendations
+        actions = find_best_actions(profile_dict, fico_engine.calculate_score)
+        
+        # Find optimal sequence
+        optimal_indices, expected_gain, efficiency = find_optimal_action_sequence(
+            profile_dict,
+            actions,
+            fico_engine.calculate_score,
+            max_cost=max_budget
+        )
+        
+        # Generate priority matrix
+        priority_matrix = generate_action_priority_matrix(actions)
+        
+        return {
+            "recommended_sequence": optimal_indices,
+            "expected_gain": expected_gain,
+            "efficiency_score": efficiency,
+            "priority_matrix": {
+                "quick_wins": [a for a in priority_matrix['quick_wins']],
+                "strategic": [a for a in priority_matrix['strategic']],
+                "fill_ins": [a for a in priority_matrix['fill_ins']],
+                "avoid": [a for a in priority_matrix['avoid']],
+            },
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
