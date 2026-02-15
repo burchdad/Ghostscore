@@ -318,9 +318,18 @@ def optimize_credit_profile(profile: CreditProfile):
     1. Rank actions by score impact
     2. Estimate improvement timeline
     3. Identify quick wins
+    
+    Returns:
+        {
+            "current_score": int,
+            "scorecard": str,
+            "recommended_actions": [action1, action2, ...],
+            "improvement_timeline": [week0, week2, week4, ...],
+            "total_potential_gain": int
+        }
     """
     try:
-        # Convert profile to dict for optimizer
+        # Convert profile to dict for optimizer (supports both ORM and dict)
         profile_dict = {
             "accounts": [
                 {
@@ -344,6 +353,9 @@ def optimize_credit_profile(profile: CreditProfile):
             ] if profile.derogatories else [],
         }
         
+        # Get full score info (includes scorecard)
+        score_info = fico_engine.calculate_full_score(profile_dict)
+        
         # Find best actions
         actions = find_best_actions(profile_dict, fico_engine.calculate_score)
         
@@ -354,16 +366,16 @@ def optimize_credit_profile(profile: CreditProfile):
             fico_engine.calculate_score
         )
         
-        # Get current score
-        current_score = fico_engine.calculate_score(profile_dict)
+        # Calculate total potential gain using new field name
+        total_gain = sum(a.get("estimated_gain", 0) for a in actions)
         
         return {
-            "current_score": current_score,
+            "current_score": score_info['score'],
+            "scorecard": score_info['scorecard'],
+            "scorecard_description": score_info['scorecard_description'],
             "recommended_actions": actions,
             "improvement_timeline": timeline,
-            "total_potential_gain": sum(
-                a.get("estimated_score_gain", 0) for a in actions
-            ),
+            "total_potential_gain": total_gain,
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
