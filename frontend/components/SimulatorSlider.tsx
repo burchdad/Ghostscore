@@ -32,7 +32,7 @@ export default function SimulatorSlider({
   // Calculate utilization for each account
   const getUtilization = (account: Account) => {
     if (!account.limit || account.limit === 0) return 0;
-    return ((account.balance / account.limit) * 100).toFixed(1);
+    return parseFloat(((account.balance / account.limit) * 100).toFixed(1));
   };
 
   // Handle balance slider change
@@ -173,24 +173,24 @@ export default function SimulatorSlider({
                 <div className="w-full h-2 bg-slate-300 rounded-full overflow-hidden">
                   <div
                     className={`h-full transition-all ${
-                      parseFloat(getUtilization(account)) <= 9
+                      getUtilization(account) <= 9
                         ? 'bg-green-500'
-                        : parseFloat(getUtilization(account)) <= 30
+                        : getUtilization(account) <= 30
                           ? 'bg-yellow-500'
                           : 'bg-red-500'
                     }`}
                     style={{
                       width: `${Math.min(
-                        parseFloat(getUtilization(account)),
+                        getUtilization(account),
                         100
                       )}%`,
                     }}
                   />
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  {parseFloat(getUtilization(account)) <= 9
+                  {getUtilization(account) <= 9
                     ? 'Excellent (< 10%)'
-                    : parseFloat(getUtilization(account)) <= 30
+                    : getUtilization(account) <= 30
                       ? 'Good (< 30%)'
                       : 'Needs improvement (> 30%)'}
                 </p>

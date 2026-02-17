@@ -74,7 +74,12 @@ class FicoEngine:
     
     MIN_SCORE = 300
     MAX_SCORE = 850
+    DEFAULT_MODEL = "linear"
     
+    def __init__(self, model: str = None):
+        """Create engine instance. Pass `model='fico8'` to use bucketed model."""
+        self.model_name = model or self.DEFAULT_MODEL
+
     def calculate_full_score(self, credit_profile: Union[Dict, Any]) -> Dict[str, Any]:
         """
         Calculate complete FICO score using 4-layer architecture.
@@ -99,7 +104,19 @@ class FicoEngine:
         subscores = self._calculate_subscores(credit_profile, features)
         
         # LAYER 4: Aggregate Score
-        final_score = aggregate_score(subscores, scorecard)
+        # If a named model is requested (e.g., 'fico8'), attempt to use its
+        # aggregation routine. Otherwise fall back to default linear aggregator.
+        final_score = None
+        if self.model_name and self.model_name.lower() == 'fico8':
+            try:
+                from .models import fico8 as fico8_model
+
+                final_score = fico8_model.aggregate_score(subscores, scorecard)
+            except Exception:
+                # If model import or execution fails, fall back to default
+                final_score = aggregate_score(subscores, scorecard)
+        else:
+            final_score = aggregate_score(subscores, scorecard)
         
         return {
             'score': final_score,

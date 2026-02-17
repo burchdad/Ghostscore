@@ -34,7 +34,20 @@ def test_signup_login_and_protected_endpoint(monkeypatch):
     import importlib.util
     import os
 
-    backend_path = os.path.abspath(os.path.join(os.getcwd(), 'backend'))
+    # Robustly locate main.py (works if cwd is project root or backend/)
+    possible_paths = [
+        os.path.abspath(os.path.join(os.getcwd(), 'main.py')),
+        os.path.abspath(os.path.join(os.getcwd(), 'backend', 'main.py')),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'main.py')),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend', 'main.py')),
+    ]
+    main_path = None
+    for p in possible_paths:
+        if os.path.isfile(p):
+            main_path = p
+            break
+    assert main_path, f"Could not find main.py in any expected location: {possible_paths}"
+    backend_path = os.path.dirname(main_path)
     if backend_path not in sys.path:
         sys.path.insert(0, backend_path)
 
@@ -97,7 +110,7 @@ def test_signup_login_and_protected_endpoint(monkeypatch):
         sys.modules['multipart'] = multipart_mod
         sys.modules['multipart.multipart'] = multipart_inner
 
-    spec = importlib.util.spec_from_file_location('main', os.path.join(backend_path, 'main.py'))
+    spec = importlib.util.spec_from_file_location('main', main_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     app = module.app

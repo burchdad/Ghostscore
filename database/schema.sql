@@ -5,6 +5,7 @@
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email TEXT UNIQUE NOT NULL,
+    password TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -65,9 +66,23 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Scenario history table (to track scenario runs and results)
+CREATE TABLE IF NOT EXISTS scenario_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    profile_id UUID NOT NULL REFERENCES credit_profiles(id) ON DELETE CASCADE,
+    actions JSONB NOT NULL, -- List of actions taken (as JSON)
+    original_score INTEGER NOT NULL,
+    simulated_score INTEGER NOT NULL,
+    actual_gain INTEGER,
+    timeline JSONB, -- Week-by-week score timeline
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for better query performance
 CREATE INDEX idx_credit_profiles_user_id ON credit_profiles(user_id);
 CREATE INDEX idx_accounts_profile_id ON accounts(profile_id);
 CREATE INDEX idx_derogatories_profile_id ON derogatories(profile_id);
 CREATE INDEX idx_score_history_profile_id ON score_history(profile_id);
 CREATE INDEX idx_audit_log_profile_id ON audit_log(profile_id);
+CREATE INDEX idx_scenario_history_profile_id ON scenario_history(profile_id);

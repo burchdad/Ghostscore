@@ -23,6 +23,16 @@ jobs:
           pip install -r backend/requirements.txt
           pip install pytest-cov ruff black isort
 
+      - name: Reset and apply schema for backend tests
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest-cov ruff black isort
+          # Remove any previous test DB file
+          rm -f backend/test_ghostscore.db
+          # Reset DB schema using test fixture logic
+          python -c "import sys; sys.path.insert(0, 'backend'); from tests.conftest import setup_test_database; setup_test_database()"
+
       - name: Run linters (ruff)
         run: ruff check backend
 

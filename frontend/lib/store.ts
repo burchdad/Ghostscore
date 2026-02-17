@@ -1,28 +1,6 @@
+
 import { create } from 'zustand'
-
-interface Account {
-  id: string
-  type: string
-  name: string
-  balance: number
-  limit?: number
-  open_date: string
-  status: string
-}
-
-interface Derogatory {
-  id: string
-  type: string
-  date: string
-  details?: string
-}
-
-interface CreditProfile {
-  id?: string
-  user_id?: string
-  accounts: Account[]
-  derogatories: Derogatory[]
-}
+import type { Account, Derogatory, CreditProfile } from './api'
 
 interface ProfileSummary {
   id: string

@@ -7,9 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest --config jest.config.cjs --passWithNoTests"
-  },
-  "scripts": {
+    "test": "jest --config jest.config.cjs --passWithNoTests",
     "e2e": "playwright test",
     "e2e:show": "playwright show-report",
     "e2e:install": "playwright install --with-deps"
@@ -23,7 +21,6 @@
     "axios": "^1.6.0",
     "zustand": "^4.4.0",
     "react-hot-toast": "^2.4.1"
-  },
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
@@ -42,8 +39,7 @@
     "identity-obj-proxy": "^3.0.0",
     "@playwright/test": "^1.36.0",
     "playwright": "^1.36.0"
-  }
-  ,
+  },
   "playwright": {
     "version": "1.36.0"
   }

@@ -104,3 +104,26 @@ class ScoreHistory(Base):
 
     def __repr__(self):
         return f"<ScoreHistory score={self.score}>"
+
+
+class ScenarioHistory(Base):
+    __tablename__ = "scenario_history"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    profile_id = Column(String(36), ForeignKey("credit_profiles.id"), nullable=False)
+    actions = Column(JSON, nullable=False)  # List of actions taken (as JSON)
+    original_score = Column(Integer, nullable=False)
+    simulated_score = Column(Integer, nullable=False)
+    actual_gain = Column(Integer, nullable=True)
+    timeline = Column(JSON, nullable=True)  # Week-by-week score timeline
+    notes = Column(Text, nullable=True)
+    tags = Column(JSON, nullable=True)  # List of tags (strings)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    pinned = Column(Boolean, default=False)
+    feedback = Column(String, nullable=True)  # User feedback/annotation
+
+    # Relationships
+    profile = relationship("CreditProfile")
+
+    def __repr__(self):
+        return f"<ScenarioHistory simulated_score={self.simulated_score}>"

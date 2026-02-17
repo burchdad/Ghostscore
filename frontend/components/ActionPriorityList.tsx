@@ -8,7 +8,7 @@
 
 import { CheckCircle2, AlertCircle, TrendingUp, DollarSign, XCircle } from 'lucide-react';
 
-interface Action {
+export interface Action {
   type: 'paydown' | 'payoff' | 'derogatory_removal';
   priority: 'high' | 'medium' | 'low';
   account_name?: string;
@@ -23,6 +23,7 @@ interface Action {
 interface ActionPriorityListProps {
   actions: Action[];
   onSelectAction?: (action: Action) => void;
+  selectedIndexes?: number[];
 }
 
 export default function ActionPriorityList({
@@ -103,14 +104,16 @@ export default function ActionPriorityList({
       </div>
 
       <div className="space-y-3">
-        {actions.map((action, index) => (
-          <div
-            key={index}
-            className={`p-4 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md ${getPriorityColor(
-              action.priority
-            )}`}
-            onClick={() => onSelectAction?.(action)}
-          >
+        {actions.map((action, index) => {
+          const isSelected = Array.isArray(selectedIndexes) && selectedIndexes.includes(index)
+          return (
+            <div
+              key={index}
+              className={`p-4 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md ${getPriorityColor(
+                action.priority
+              )} ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+              onClick={() => onSelectAction?.(action)}
+            >
             <div className="flex items-start gap-4">
               <div className="mt-1">{getActionIcon(action.type)}</div>
 

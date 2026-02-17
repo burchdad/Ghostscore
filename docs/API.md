@@ -21,7 +21,100 @@ Response: 200 OK
 }
 ```
 
+
 ## Credit Score Endpoints
+---
+
+### Calibrate Profile
+
+**Run calibration for a profile to improve score accuracy using real credit report data.**
+
+```
+POST /profiles/{profile_id}/calibrate
+Content-Type: application/json
+
+Response: 200 OK
+{
+  "message": "Calibration complete! Correction factors updated."
+}
+```
+
+**Errors:**
+- 404 Not Found: Profile not found
+- 500 Server Error: Calibration failed
+
+---
+
+### Optimize Credit Profile (Goal-Based)
+
+**Find optimal strategy to reach a target score or constraint.**
+
+```
+POST /optimize/goal
+Content-Type: application/json
+
+Body:
+{
+  "accounts": [...],
+  "derogatories": [],
+  "goal": {
+    "target_score": 700,
+    "max_monthly_payment": 500
+  }
+}
+
+Response: 200 OK
+{
+  "current_score": 650,
+  "recommended_actions": [ ... ],
+  "estimated_timeline": [ ... ],
+  "total_potential_gain": 50
+}
+```
+
+---
+
+### Upload Credit Bureau Report
+
+**Upload a credit report file (PDF or TXT) for extraction.**
+
+```
+POST /profiles/{profile_id}/upload-credit-report
+Content-Type: multipart/form-data
+
+Form Data:
+- file: (PDF or TXT file)
+- bureau: equifax | experian | transunion
+
+Response: 200 OK
+{
+  "status": "Extracted 5 accounts from Equifax report.",
+  "accounts": [ ... ]
+}
+```
+
+---
+
+### Import Accounts from Extracted Report
+
+**Import selected accounts after extraction.**
+
+```
+POST /profiles/{profile_id}/import-accounts-from-report
+Content-Type: application/json
+
+Body:
+{
+  "accounts": [ ... ],
+  "selected_indices": [0, 2, 3]
+}
+
+Response: 200 OK
+{
+  "imported_count": 3,
+  "accounts": [ ... ]
+}
+```
 
 ### Calculate FICO Score
 

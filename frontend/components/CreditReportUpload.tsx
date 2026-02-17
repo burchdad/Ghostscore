@@ -1,6 +1,34 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
+// CalibrationPanel: Modal for calibration actions (reused from Dashboard)
+function CalibrationPanel({ open, onClose, onCalibrate, loading, result }: { open: boolean, onClose: () => void, onCalibrate: () => void, loading: boolean, result: string | null }) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
+        <h2 className="text-xl font-bold mb-4">Calibration Engine</h2>
+        <p className="mb-4 text-slate-700 text-sm">Run calibration on your current profile to improve score accuracy using your real credit report data.</p>
+        {result && <div className="mb-4 p-3 bg-green-100 text-green-800 rounded text-sm">{result}</div>}
+        <div className="flex gap-3">
+          <button
+            onClick={onCalibrate}
+            disabled={loading}
+            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white rounded font-semibold transition"
+          >
+            {loading ? 'Calibrating...' : 'Run Calibration'}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded font-semibold transition"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 import { useStore } from '@/lib/store'
 import { apiClient } from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -122,114 +150,132 @@ export default function CreditReportUpload({ onClose }: { onClose: () => void })
     }
   }
 
+  // Calibration modal state
+  const [calibOpen, setCalibOpen] = useState(false)
+  const [calibLoading, setCalibLoading] = useState(false)
+  const [calibResult, setCalibResult] = useState<string | null>(null)
+
+  const handleCalibrate = useCallback(async () => {
+    if (!currentProfileId) return
+    setCalibLoading(true)
+    setCalibResult(null)
+    try {
+      const resp = await apiClient.calibrateProfile(currentProfileId)
+      setCalibResult(resp?.message || 'Calibration complete!')
+      toast.success('Calibration complete!')
+    } catch (err) {
+      setCalibResult('Calibration failed.')
+      toast.error('Calibration failed')
+    } finally {
+      setCalibLoading(false)
+    }
+  }, [currentProfileId])
+
   if (extractedAccounts.length > 0) {
     return (
       <div className="bg-slate-700 rounded-lg p-6">
         <h3 className="text-xl font-bold text-white mb-4">Review Extracted Accounts</h3>
-        
         {uploadStatus && (
           <div className="mb-4 p-3 bg-blue-900 text-blue-100 rounded text-sm">
             {uploadStatus}
           </div>
         )}
-
         <div className="space-y-2 mb-6 max-h-96 overflow-y-auto">
           {extractedAccounts.map((account, idx) => (
-              <div
-                key={idx}
-                className={`p-3 rounded border-2 transition ${
-                  selectedAccounts.has(idx)
-                    ? 'border-blue-400 bg-blue-900/20'
-                    : 'border-slate-600 bg-slate-600/50'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedAccounts.has(idx)}
-                    onChange={() => toggleAccountSelection(idx)}
-                    className="mt-1 w-4 h-4 cursor-pointer"
-                  />
-                  <div className="flex-1">
-                    <div className="font-semibold text-white">
-                      <input
-                        value={account.name}
-                        onChange={(e) => {
-                          const copy = [...extractedAccounts]
-                          copy[idx] = { ...copy[idx], name: e.target.value }
-                          setExtractedAccounts(copy)
-                        }}
-                        className="w-full bg-transparent text-white font-semibold"
-                      />
-                    </div>
-                    <div className="text-sm text-slate-300 grid grid-cols-3 gap-2 mt-2">
-                      <select
-                        value={account.type}
-                        onChange={(e) => {
-                          const copy = [...extractedAccounts]
-                          copy[idx] = { ...copy[idx], type: e.target.value }
-                          setExtractedAccounts(copy)
-                        }}
-                        className="px-2 py-1 bg-slate-700 rounded"
-                      >
-                        <option value="credit_card">Credit Card</option>
-                        <option value="auto_loan">Auto Loan</option>
-                        <option value="mortgage">Mortgage</option>
-                        <option value="student_loan">Student Loan</option>
-                        <option value="personal_loan">Personal Loan</option>
-                        <option value="other">Other</option>
-                      </select>
-                      <input
-                        value={account.balance}
-                        onChange={(e) => {
-                          const copy = [...extractedAccounts]
-                          copy[idx] = { ...copy[idx], balance: parseFloat(e.target.value || '0') }
-                          setExtractedAccounts(copy)
-                        }}
-                        className="px-2 py-1 bg-slate-700 rounded"
-                      />
-                      <input
-                        value={account.limit || ''}
-                        onChange={(e) => {
-                          const copy = [...extractedAccounts]
-                          copy[idx] = { ...copy[idx], limit: e.target.value ? parseFloat(e.target.value) : undefined }
-                          setExtractedAccounts(copy)
-                        }}
-                        className="px-2 py-1 bg-slate-700 rounded"
-                        placeholder="Limit"
-                      />
-                      <input
-                        value={account.open_date}
-                        onChange={(e) => {
-                          const copy = [...extractedAccounts]
-                          copy[idx] = { ...copy[idx], open_date: e.target.value }
-                          setExtractedAccounts(copy)
-                        }}
-                        className="px-2 py-1 bg-slate-700 rounded"
-                        placeholder="YYYY-MM-DD"
-                      />
-                      <select
-                        value={account.status}
-                        onChange={(e) => {
-                          const copy = [...extractedAccounts]
-                          copy[idx] = { ...copy[idx], status: e.target.value }
-                          setExtractedAccounts(copy)
-                        }}
-                        className="px-2 py-1 bg-slate-700 rounded"
-                      >
-                        <option value="active">Active</option>
-                        <option value="closed">Closed</option>
-                        <option value="charged_off">Charged Off</option>
-                        <option value="delinquent">Delinquent</option>
-                      </select>
-                    </div>
+            <div
+              key={idx}
+              className={`p-3 rounded border-2 transition ${
+                selectedAccounts.has(idx)
+                  ? 'border-blue-400 bg-blue-900/20'
+                  : 'border-slate-600 bg-slate-600/50'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedAccounts.has(idx)}
+                  onChange={() => toggleAccountSelection(idx)}
+                  className="mt-1 w-4 h-4 cursor-pointer"
+                />
+                <div className="flex-1">
+                  <div className="font-semibold text-white">
+                    <input
+                      value={account.name}
+                      onChange={(e) => {
+                        const copy = [...extractedAccounts]
+                        copy[idx] = { ...copy[idx], name: e.target.value }
+                        setExtractedAccounts(copy)
+                      }}
+                      className="w-full bg-transparent text-white font-semibold"
+                    />
+                  </div>
+                  <div className="text-sm text-slate-300 grid grid-cols-3 gap-2 mt-2">
+                    <select
+                      value={account.type}
+                      onChange={(e) => {
+                        const copy = [...extractedAccounts]
+                        copy[idx] = { ...copy[idx], type: e.target.value }
+                        setExtractedAccounts(copy)
+                      }}
+                      className="px-2 py-1 bg-slate-700 rounded"
+                    >
+                      <option value="credit_card">Credit Card</option>
+                      <option value="auto_loan">Auto Loan</option>
+                      <option value="mortgage">Mortgage</option>
+                      <option value="student_loan">Student Loan</option>
+                      <option value="personal_loan">Personal Loan</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <input
+                      value={account.balance}
+                      onChange={(e) => {
+                        const copy = [...extractedAccounts]
+                        copy[idx] = { ...copy[idx], balance: parseFloat(e.target.value || '0') }
+                        setExtractedAccounts(copy)
+                      }}
+                      className="px-2 py-1 bg-slate-700 rounded"
+                    />
+                    <input
+                      value={account.limit || ''}
+                      onChange={(e) => {
+                        const copy = [...extractedAccounts]
+                        copy[idx] = { ...copy[idx], limit: e.target.value ? parseFloat(e.target.value) : undefined }
+                        setExtractedAccounts(copy)
+                      }}
+                      className="px-2 py-1 bg-slate-700 rounded"
+                      placeholder="Limit"
+                    />
+                    <input
+                      value={account.open_date}
+                      onChange={(e) => {
+                        const copy = [...extractedAccounts]
+                        copy[idx] = { ...copy[idx], open_date: e.target.value }
+                        setExtractedAccounts(copy)
+                      }}
+                      className="px-2 py-1 bg-slate-700 rounded"
+                      placeholder="YYYY-MM-DD"
+                    />
+                    <select
+                      value={account.status}
+                      onChange={(e) => {
+                        const copy = [...extractedAccounts]
+                        copy[idx] = { ...copy[idx], status: e.target.value }
+                        setExtractedAccounts(copy)
+                      }}
+                      className="px-2 py-1 bg-slate-700 rounded"
+                    >
+                      <option value="active">Active</option>
+                      <option value="closed">Closed</option>
+                      <option value="charged_off">Charged Off</option>
+                      <option value="delinquent">Delinquent</option>
+                    </select>
                   </div>
                 </div>
               </div>
-            ))}
+            </div>
+          ))}
         </div>
-
-        <div className="flex gap-3">
+        <div className="flex gap-3 mb-3">
           <button
             onClick={handleImport}
             disabled={loading || selectedAccounts.size === 0}
@@ -255,6 +301,15 @@ export default function CreditReportUpload({ onClose }: { onClose: () => void })
             Cancel
           </button>
         </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setCalibOpen(true)}
+            className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded font-semibold transition"
+          >
+            Calibrate
+          </button>
+        </div>
+        <CalibrationPanel open={calibOpen} onClose={() => setCalibOpen(false)} onCalibrate={handleCalibrate} loading={calibLoading} result={calibResult} />
       </div>
     )
   }

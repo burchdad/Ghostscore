@@ -46,14 +46,14 @@ An AI-powered FICO credit score simulator, optimizer, and credit strategy engine
 - ✅ Real-time score updates on scenario changes
 - ✅ 3 new API endpoints for scenario analysis
 
-### Phase 5 (Upcoming)
-- Persistent improvement tracking (historical scenarios)
-- Export functionality (PDF reports, action plans)
-- Mobile app (React Native)
-- ML-based action sequencing optimization
-- Predictive score forecasting
-- Credit report auto-import
-- Advisor network integration
+### Phase 5: Persistent Improvement Tracking & Advanced Analytics (Complete ✅)
+- ✅ Scenario History & Comparison: Save, revisit, and compare historical scenarios. Multi-scenario selection, side-by-side comparison, and persistent tracking across sessions.
+- ✅ Pinning & Favorites: Pin or favorite scenarios for quick access.
+- ✅ Timeline Visualization: Visualize scenario evolution and score changes over time.
+- ✅ Advanced Analytics: Analyze score factors, trends, radar charts, subscore breakdowns, and scenario analytics.
+- ✅ Export & Reporting: Export profile, action plan, and scenario comparisons as PDF reports (backend-generated, frontend download buttons).
+- ✅ Scenario Tagging, Notes, and Feedback: Add/edit tags, notes, and user feedback to scenarios. All fields are persisted and editable from the UI.
+- ✅ Scenario Analytics & Improvement Tracking: All scenario analytics and improvement tracking are persistent and available for user review.
 
 ---
 
@@ -76,7 +76,9 @@ Database (Supabase PostgreSQL)
 - React 18
 - Tailwind CSS
 - Recharts (visualizations)
+- Lucide React (icons)
 - Zustand (state management)
+- React Hot Toast (notifications)
 
 **Backend**
 - FastAPI
@@ -105,11 +107,14 @@ ghostscore/
 │   │   ├── AccountsList.tsx
 │   │   ├── AddAccountForm.tsx
 │   │   ├── RecommendationsPanel.tsx
-	│   │   ├── ScenarioSimulator.tsx
-	│   │   ├── ScoreTrajectoryChart.tsx (Phase 3)
-	│   │   ├── ActionPriorityList.tsx (Phase 3)
-	│   │   ├── SimulatorSlider.tsx (Phase 3)
-	│   │   └── ScoreFactorsRadar.tsx (Phase 3)
+│   │   ├── CreditReportUpload.tsx
+│   │   ├── ProfileSelector.tsx
+│   │   ├── ScenarioSimulator.tsx (Phase 4)
+│   │   ├── ScoreTrajectoryChart.tsx (Phase 3)
+│   │   ├── ScoreTrends.tsx (Phase 4)
+│   │   ├── ActionPriorityList.tsx (Phase 3)
+│   │   ├── SimulatorSlider.tsx (Phase 3)
+│   │   └── ScoreFactorsRadar.tsx (Phase 3)
 │   ├── lib/
 │   │   ├── store.ts (Zustand store)
 │   │   └── api.ts (API client)
@@ -119,13 +124,14 @@ ghostscore/
 ├── backend/
 │   ├── main.py
 │   ├── scoring/
-	│   │   ├── fico_engine.py (Orchestrator pattern)
-	│   │   ├── feature_engine.py (Phase 3 - normalize features)
-	│   │   ├── scorecards.py (Phase 3 - segment profiles)
-	│   │   ├── aggregator.py (Phase 3 - combine scores)
-	│   │   ├── optimizer.py (Phase 3 - AI recommendations)
-	│   │   ├── subscores.py (5 FICO factors)
-│   │   ├── scenarios.py
+│   │   ├── fico_engine.py (Orchestrator pattern)
+│   │   ├── feature_engine.py (Phase 3 - normalize features)
+│   │   ├── scorecards.py (Phase 3 - segment profiles)
+│   │   ├── aggregator.py (Phase 3 - combine scores)
+│   │   ├── optimizer.py (Phase 3 - AI recommendations)
+│   │   ├── scenario_analyzer.py (Phase 4 - multi-action scenarios)
+│   │   ├── subscores.py (5 FICO factors)
+│   │   ├── scenarios.py (Phase 4 - scenario modeling)
 │   │   └── __init__.py
 │   ├── models/
 │   │   └── __init__.py
@@ -193,6 +199,33 @@ Frontend runs at `http://localhost:3000`
 ---
 
 ## 📊 API Endpoints
+## 🆕 Phase 5 API & Frontend Usage
+
+### Scenario History & Comparison
+- **Save scenario run:**
+  - `POST /profiles/{profile_id}/scenario_history` — Save a scenario run (actions, scores, timeline, notes, tags).
+- **Get scenario history:**
+  - `GET /profiles/{profile_id}/scenario_history?limit=100` — Retrieve scenario history for a profile.
+- **Update notes/tags:**
+  - `PATCH /profiles/{profile_id}/scenario_history/{scenario_id}` — Update notes or tags for a scenario.
+- **Pin/unpin scenario:**
+  - `PATCH /profiles/{profile_id}/scenario_history/{scenario_id}/pin` — Pin or unpin a scenario (body: `true`/`false`).
+- **Add feedback:**
+  - `PATCH /profiles/{profile_id}/scenario_history/{scenario_id}/feedback` — Add or update user feedback (body: feedback string).
+
+### Export & Reporting
+- **Export profile PDF:**
+  - `GET /profiles/{profile_id}/export/pdf` — Download a PDF report of the profile, score, and scenario history.
+- **Export action plan PDF:**
+  - `GET /profiles/{profile_id}/action_plan/pdf` — Download a PDF of the recommended action plan.
+- **Export scenario comparison PDF:**
+  - `GET /profiles/{profile_id}/scenario_comparison/pdf?scenario_ids=ID1,ID2` — Download a PDF comparing two scenarios.
+
+### Frontend Usage
+- Scenario history, pinning, tagging, notes, feedback, and PDF export are available in the Dashboard and ScenarioHistory components.
+- Download buttons for profile, action plan, and scenario comparison PDFs are in the Dashboard.
+- Scenario comparison, pinning, timeline, analytics, tagging, notes, and feedback are all accessible from the ScenarioHistory panel.
+- All new endpoints are wrapped in `frontend/lib/api.ts` and integrated into the UI.
 
 ### Calculate Score
 ```
@@ -305,14 +338,31 @@ Response: {
 }
 ```
 
+### Predictive Score Forecasting (ML)
+- **Forecast score trajectory:**
+  - `POST /score/forecast` — Predict week-by-week credit score using ML regression model.
+  - Request body:
+    ```json
+    {
+      "profile": { ... },
+      "weeks": 16
+    }
+    ```
+  - Response:
+    ```json
+    {
+      "forecast": [650.0, 655.2, 660.1, ...],
+      "weeks": 16
+    }
+    ```
+- **Frontend Usage:**
+  - Use this endpoint to visualize predicted score trajectory in ScoreTrajectoryChart or similar components.
+
 ---
 
 ## 🧮 FICO Score Model
 
 ### Scoring Factors
-
-| Factor | Weight | Details |
-|--------|--------|---------|
 | Payment History | 35% | On-time payments, late payments, collections |
 | Credit Utilization | 30% | % of available credit in use |
 | Age of Credit | 15% | Average account age & oldest account |
@@ -326,6 +376,15 @@ Response: {
 - 740-799: Very Good
 - 800-850: Excellent
 
+### Score Model Variants
+
+- `linear` (default): simplified linear aggregator used by the engine for MVP
+- `fico8`: FICO-8 style bucketed scoring model (more realistic, uses explicit
+  bins for utilization, age, payment history, new credit, and mix)
+
+You can request a specific model when calling the API endpoints by supplying
+the `model` query parameter (for example: `POST /score?model=fico8`).
+
 ---
 
 ## 📝 Environment Setup
@@ -338,6 +397,14 @@ SUPABASE_KEY=your_supabase_key
 DATABASE_URL=postgresql://user:password@localhost:5432/ghostscore
 ```
 
+4. **Migrations for Scenario Features**
+  - Ensure you run all Alembic migrations to add scenario history, tags, pinned, and feedback columns:
+    - `alembic upgrade head` (applies all migrations, including 0003_add_tags_to_scenario_history.py, 0004_add_pinned_to_scenario_history.py, 0005_add_feedback_to_scenario_history.py)
+  - If you encounter DB errors, check `backend/alembic/versions/` for migration scripts and re-run as needed.
+
+5. **Testing New Features**
+  - Backend: See `backend/tests/` for scenario pinning, feedback, analytics tests.
+  - Frontend: Scenario history, comparison, pinning, and export are covered in Playwright and Jest tests.
 ### Frontend (.env.local)
 ```
 NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -390,21 +457,15 @@ psql ghostscore < database/schema.sql
 
 ---
 
-# GhostScore
+## 🔗 Quick Links
 
-GhostScore is an open-source FICO-like credit score simulator, optimizer, and strategy engine. It provides a FastAPI backend with a Next.js frontend and tools to simulate paydown scenarios, estimate subscores, and generate recommendations.
+- API server: [backend/main.py](backend/main.py)
+- Frontend: [frontend/](frontend/)
+- Database schema: [database/schema.sql](database/schema.sql)
+- Alembic migrations: [backend/alembic/](backend/alembic/)
+- CI workflow: [.github/workflows/ci.yml](.github/workflows/ci.yml)
 
-This repository contains a working MVP and developer tooling for local development, testing, and CI.
-
-## Quick links
-
-- API server: `backend/main.py`
-- Frontend: `frontend/`
-- Database schema: `database/schema.sql`
-- Alembic migrations: `backend/alembic/`
-- CI workflow: `.github/workflows/ci.yml`
-
-## Getting started (recommended: Docker)
+## 🚀 Getting Started (Recommended: Docker)
 
 1. Copy environment example and adjust values:
 
@@ -412,7 +473,7 @@ This repository contains a working MVP and developer tooling for local developme
 cp .env.example .env
 ```
 
-2. Start database and backend with Docker Compose (applies migration manually unless `MIGRATE_ON_STARTUP` is enabled):
+2. Start database and backend with Docker Compose:
 
 ```bash
 docker-compose up -d db
@@ -422,13 +483,13 @@ docker-compose up -d backend
 
 3. Verify API at `http://localhost:8000` and docs at `http://localhost:8000/docs`.
 
-Notes:
-- To apply migrations on startup set `MIGRATE_ON_STARTUP=true` in your `.env` (default: `false`).
-- The Postgres init SQL file is mounted from `database/schema.sql` in `docker-compose.yml`.
+**Notes:**
+- To apply migrations on startup, set `MIGRATE_ON_STARTUP=true` in `.env` (default: `false`)
+- The Postgres init SQL file is mounted from `database/schema.sql`
 
-## Local development (without Docker)
+## 💻 Local Development (Without Docker)
 
-Backend
+**Backend**
 
 ```bash
 cd backend
@@ -439,7 +500,7 @@ cp ../.env.example .env
 uvicorn main:app --reload
 ```
 
-Frontend
+**Frontend**
 
 ```bash
 cd frontend
@@ -447,73 +508,78 @@ npm ci
 npm run dev
 ```
 
-Frontend runs at `http://localhost:3000` by default.
+Frontend runs at `http://localhost:3000`
 
-## Database migrations
+## 🗄️ Database Migrations
 
-- Migrations are managed with Alembic under `backend/alembic/` and an initial migration is included at `backend/alembic/versions/0001_initial.py`.
-- To run migrations locally (inside project root):
+Migrations are managed with Alembic. To run migrations locally:
 
 ```bash
-# from project root
 export DATABASE_URL=postgresql://user:pass@localhost:5432/ghostscore
 alembic -c backend/alembic.ini upgrade head
 ```
 
-## Tests
+## ✅ Testing
 
-Backend
+**Backend**
 
 ```bash
 cd backend
 pytest -q
 ```
 
-Frontend
+**Frontend**
 
 ```bash
 cd frontend
-npm ci
 npm test
 ```
 
-CI is configured in `.github/workflows/ci.yml` to run backend tests and build the frontend on PRs and pushes to `main`.
+**E2E Tests (Playwright)**
 
-## Linting & Formatting
-
-- Python: `black`, `isort`, and `ruff` are configured. A `.pre-commit-config.yaml` is included; run `pre-commit install`.
-- Frontend: use `npm run lint` via Next.js built-in linter.
-
-## Generating API docs
-
-The FastAPI OpenAPI JSON can be exported using `scripts/generate_openapi.py` which writes `docs/openapi.json`.
-
-## Contributing
-
-See `CONTRIBUTING.md` for development and PR guidelines.
-
-## Next suggested additions
-
-- Secrets management / GitHub Secrets + `.env` guidance
-- CI: test coverage thresholds and artifact uploads (coverage.xml) — coverage thresholds are now enforced in CI (backend 80%).
-- Dependabot configured in `.github/dependabot.yml` to keep dependencies up-to-date weekly.
-- Add integration/e2e tests (Playwright) — Playwright CI workflow added; see `.github/workflows/playwright.yml`
-- Monitoring: add basic Prometheus metrics + health endpoints
-- Docker image publishing and release workflow
-- Harden startup: migrations are opt-in via `MIGRATE_ON_STARTUP`, consider adding feature flags
-
-Phase 2 is scoped and locked in — see [PHASE2.md](PHASE2.md) for milestones and [PHASE2_COMPLETION.md](PHASE2_COMPLETION.md) for completion status.
-
-Phase 3 architecture documented in [PHASE3_FINTECH_ARCHITECTURE.md](PHASE3_FINTECH_ARCHITECTURE.md).
-
-Phase 4 scenario analysis documented in [PHASE4_SCENARIO_ANALYSIS.md](PHASE4_SCENARIO_ANALYSIS.md).
-
-**Phase 2 Execution**: Run the following to create issues and project board:
 ```bash
-export GITHUB_TOKEN=<your_personal_access_token>
-python scripts/create_phase2_issues.py
-python scripts/create_project_board.py
+cd frontend
+npm run e2e
+npm run e2e:show  # View report
 ```
+
+## 🧹 Linting & Formatting
+
+- **Python**: `black`, `isort`, and `ruff` configured. Run `pre-commit install` to enable hooks
+- **Frontend**: `npm run lint` via Next.js built-in linter
+
+## 📚 Documentation
+
+- **API Docs**: Auto-generated at `http://localhost:8000/docs` (Swagger UI)
+- **OpenAPI JSON**: Generated via `scripts/generate_openapi.py` → `docs/openapi.json`
+- **Phase Documentation**:
+  - [Phase 2 Status](PHASE2_COMPLETION.md)
+  - [Phase 3 Architecture](PHASE3_FINTECH_ARCHITECTURE.md)
+  - [Phase 4 Scenario Analysis](PHASE4_SCENARIO_ANALYSIS.md)
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and PR guidelines.
+
+## 📋 Roadmap
+
+**Phase 5 (Complete)**
+- Persistent improvement tracking (historical scenarios, scenario analytics, timeline, tagging, notes, feedback, pinning, multi-compare)
+- Advanced export functionality (PDF reports, action plans, scenario comparison)
+
+**Next Phases**
+- Mobile app (React Native)
+- ML-based action sequencing optimization
+- Predictive score forecasting
+- Credit report auto-import
+- Advisor network integration
+
+**Current Enhancements**
+- Coverage thresholds enforced in CI (backend 80%+)
+- Dependabot keeping dependencies updated weekly
+- Playwright E2E test suite
+- Docker image publishing pipeline
+- Feature flags for deployment safety
 
 ---
 
