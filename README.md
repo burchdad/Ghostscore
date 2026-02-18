@@ -90,7 +90,21 @@ GhostScore is a lender-grade, production-complete, AI-powered credit intelligenc
 - Advanced analytics: radar, trends, scenario comparison, PDF export
 - Modern Next.js/React dashboard with all analytics and controls
 
-See [FEATURES.md](FEATURES.md) for a comprehensive list of all features, endpoints, ML/AI capabilities, analytics, and planned enhancements.
+
+---
+
+## 🛡️ Database & System Validation (2026)
+
+- Database and user credentials updated for institutional-grade security and auditability
+- Docker Compose and Alembic configuration updated for a new, clean database and volume
+- Alembic migrations applied successfully to a fresh PostgreSQL instance
+- Schema, tables, and relations verified via direct SQL queries
+- FastAPI backend and all critical endpoints tested for successful response
+- Backend logs reviewed for hidden errors or warnings
+- Automated test suite executed to confirm all features are error-free
+- **No errors detected** in database migrations, API startup, or endpoint responses
+- **All services are connected and operational**
+- See [DB_VALIDATION_REPORT.md](DB_VALIDATION_REPORT.md) for full details and audit log
 
 ---
 
