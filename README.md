@@ -64,9 +64,46 @@ Frontend (Next.js 14 + React)
          ↓
     API Layer (FastAPI)
          ↓
-Scoring Engine (Python)
+npm run e2e:show  # View report
+```
+
+
+# GhostScore - FICO Simulator, Optimizer & Credit Intelligence Platform
+
+GhostScore is a lender-grade, production-complete, AI-powered credit intelligence engine for simulation, optimization, analytics, and scenario planning. It supports multi-model scoring (FICO 8/9/10, linear), per-model calibration, timeline realism, goal solving, explainability, and full auditability/versioning.
+
+**Status:** Stable, versioned, and auditable. All core, advanced, and ML-driven features implemented. Ready for production use.
+
+---
+
+## 🚀 Key Features
+
+- Multi-model FICO scoring (FICO 8, FICO 9, FICO 10, linear)
+- Per-model calibration engine (aligns with real credit report data)
+- Timeline Realism Engine (realistic score projections, reporting delays)
+- Goal Solver (multi-model, composite, Monte Carlo, explainability)
+- Score Stability Index (volatility/consistency metric)
+- Composite score endpoint (average/weighted multi-model)
+- Full auditability: model versioning, score hash, profile snapshotting
+- Persistent score and scenario history (per model/version)
+- ML-powered action sequencing and predictive score forecasting
+- Advanced analytics: radar, trends, scenario comparison, PDF export
+- Modern Next.js/React dashboard with all analytics and controls
+
+See [FEATURES.md](FEATURES.md) for a comprehensive list of all features, endpoints, ML/AI capabilities, analytics, and planned enhancements.
+
+---
+
+## 🏗️ Architecture
+
+```
+Frontend (Next.js 14 + React)
          ↓
-Database (Supabase PostgreSQL)
+    API Layer (FastAPI)
+         ↓
+Scoring Engine (Python, modular, versioned)
+         ↓
+Database (Supabase PostgreSQL, Alembic migrations)
 ```
 
 ### Tech Stack
@@ -81,498 +118,34 @@ Database (Supabase PostgreSQL)
 - React Hot Toast (notifications)
 
 **Backend**
-- FastAPI
-- Python 3.9+
-- Pydantic
-
-**Database**
-- PostgreSQL (via Supabase)
-- Optional: SQLAlchemy ORM
-
----
-
-## 📁 Project Structure
-
-```
-ghostscore/
-├── frontend/
-│   ├── app/
-│   │   ├── page.tsx
-│   │   ├── layout.tsx
-│   │   └── globals.css
-│   ├── components/
-│   │   ├── Dashboard.tsx
-│   │   ├── ScoreCard.tsx
-│   │   ├── SubscoreChart.tsx
-│   │   ├── AccountsList.tsx
-│   │   ├── AddAccountForm.tsx
-│   │   ├── RecommendationsPanel.tsx
-│   │   ├── CreditReportUpload.tsx
-│   │   ├── ProfileSelector.tsx
-│   │   ├── ScenarioSimulator.tsx (Phase 4)
-│   │   ├── ScoreTrajectoryChart.tsx (Phase 3)
-│   │   ├── ScoreTrends.tsx (Phase 4)
-│   │   ├── ActionPriorityList.tsx (Phase 3)
-│   │   ├── SimulatorSlider.tsx (Phase 3)
-│   │   └── ScoreFactorsRadar.tsx (Phase 3)
-│   ├── lib/
-│   │   ├── store.ts (Zustand store)
-│   │   └── api.ts (API client)
-│   ├── package.json
-│   └── tsconfig.json
-│
-├── backend/
-│   ├── main.py
-│   ├── scoring/
-│   │   ├── fico_engine.py (Orchestrator pattern)
-│   │   ├── feature_engine.py (Phase 3 - normalize features)
-│   │   ├── scorecards.py (Phase 3 - segment profiles)
-│   │   ├── aggregator.py (Phase 3 - combine scores)
-│   │   ├── optimizer.py (Phase 3 - AI recommendations)
-│   │   ├── scenario_analyzer.py (Phase 4 - multi-action scenarios)
-│   │   ├── subscores.py (5 FICO factors)
-│   │   ├── scenarios.py (Phase 4 - scenario modeling)
-│   │   └── __init__.py
-│   ├── models/
-│   │   └── __init__.py
-│   ├── requirements.txt
-│   └── .env.example
-│
-├── database/
-│   └── schema.sql
-│
-├── docs/
-│   └── (API documentation)
-│
-└── README.md
-```
+- FastAPI (Python 3.9+)
+- Pydantic (validation)
+- scikit-learn (ML/AI)
+- SQLAlchemy ORM
+- Alembic (migrations)
+- Supabase PostgreSQL
 
 ---
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js 18+
-- Python 3.9+
-- PostgreSQL 12+ (or Supabase account)
-
-### Backend Setup
-
-```bash
-cd backend
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Copy environment file
-cp .env.example .env
-
-# Run server
-uvicorn main:app --reload
-```
-
-Server runs at `http://localhost:8000`
-
-API Docs available at `http://localhost:8000/docs`
-
-### Frontend Setup
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Copy environment file
-cp .env.example .env.local
-
-# Run dev server
-npm run dev
-```
-
-Frontend runs at `http://localhost:3000`
-
----
-
-## 📊 API Endpoints
-## 🆕 Phase 5 API & Frontend Usage
-
-### Scenario History & Comparison
-- **Save scenario run:**
-  - `POST /profiles/{profile_id}/scenario_history` — Save a scenario run (actions, scores, timeline, notes, tags).
-- **Get scenario history:**
-  - `GET /profiles/{profile_id}/scenario_history?limit=100` — Retrieve scenario history for a profile.
-- **Update notes/tags:**
-  - `PATCH /profiles/{profile_id}/scenario_history/{scenario_id}` — Update notes or tags for a scenario.
-- **Pin/unpin scenario:**
-  - `PATCH /profiles/{profile_id}/scenario_history/{scenario_id}/pin` — Pin or unpin a scenario (body: `true`/`false`).
-- **Add feedback:**
-  - `PATCH /profiles/{profile_id}/scenario_history/{scenario_id}/feedback` — Add or update user feedback (body: feedback string).
-
-### Export & Reporting
-- **Export profile PDF:**
-  - `GET /profiles/{profile_id}/export/pdf` — Download a PDF report of the profile, score, and scenario history.
-- **Export action plan PDF:**
-  - `GET /profiles/{profile_id}/action_plan/pdf` — Download a PDF of the recommended action plan.
-- **Export scenario comparison PDF:**
-  - `GET /profiles/{profile_id}/scenario_comparison/pdf?scenario_ids=ID1,ID2` — Download a PDF comparing two scenarios.
-
-### Frontend Usage
-- Scenario history, pinning, tagging, notes, feedback, and PDF export are available in the Dashboard and ScenarioHistory components.
-- Download buttons for profile, action plan, and scenario comparison PDFs are in the Dashboard.
-- Scenario comparison, pinning, timeline, analytics, tagging, notes, and feedback are all accessible from the ScenarioHistory panel.
-- All new endpoints are wrapped in `frontend/lib/api.ts` and integrated into the UI.
-
-### Calculate Score
-```
-POST /score
-Content-Type: application/json
-
-{
-  "accounts": [
-    {
-      "id": "card1",
-      "type": "credit_card",
-      "name": "Chase Sapphire",
-      "balance": 2500,
-      "limit": 5000,
-      "open_date": "2020-01-15",
-      "status": "active"
-    }
-  ],
-  "derogatories": []
-}
-
-Response: {
-  "score": 650,
-  "payment_history": 75,
-  "utilization": 70,
-  "age": 60,
-  "new_credit": 80,
-  "mix": 65
-}
-```
-
-### Simulate Paydown
-```
-POST /simulate/paydown
-
-{
-  "profile": { ... },
-  "account_id": "card1",
-  "new_balance": 1250
-}
-
-Response: {
-  "original_score": 650,
-  "new_score": 668,
-  "score_delta": 18
-}
-```
-
-### Get Recommendations
-```
-POST /recommendations
-
-Response: {
-  "current_score": 650,
-  "estimated_potential_gain": 85,
-  "recommendations": [
-    {
-      "action": "paydown",
-      "account": "Chase Sapphire",
-      "current_balance": 2500,
-      "target_balance": 450,
-      "amount_to_pay": 2050,
-      "score_gain": 35,
-      "priority": "high"
-    }
-  ]
-}
-```
-
-### Optimize Credit Profile (AI-Powered)
-```
-POST /optimize
-
-{
-  "accounts": [
-    {
-      "type": "credit_card",
-      "name": "Chase Sapphire",
-      "balance": 2500,
-      "limit": 5000,
-      "open_date": "2020-01-15",
-      "status": "active"
-    }
-  ],
-  "derogatories": []
-}
-
-Response: {
-  "current_score": 650,
-  "scorecard": "clean",
-  "scorecard_description": "No negatives, established history...",
-  "recommended_actions": [
-    {
-      "type": "paydown",
-      "priority": "high",
-      "account_name": "Chase Sapphire",
-      "current_balance": 2500,
-      "target_balance": 450,
-      "paydown_amount": 2050,
-      "estimated_gain": 35,
-      "description": "Pay down Chase Sapphire balance to $450"
-    }
-  ],
-  "improvement_timeline": [
-    {"week": 0, "score": 650, "milestone": "Current score"},
-    {"week": 4, "score": 668, "milestone": "First paydowns reflected"},
-    {"week": 16, "score": 685, "milestone": "Full effect of all recommendations"}
-  ],
-  "total_potential_gain": 85
-}
-```
-
-### Predictive Score Forecasting (ML)
-- **Forecast score trajectory:**
-  - `POST /score/forecast` — Predict week-by-week credit score using ML regression model.
-  - Request body:
-    ```json
-    {
-      "profile": { ... },
-      "weeks": 16
-    }
-    ```
-  - Response:
-    ```json
-    {
-      "forecast": [650.0, 655.2, 660.1, ...],
-      "weeks": 16
-    }
-    ```
-- **Frontend Usage:**
-  - Use this endpoint to visualize predicted score trajectory in ScoreTrajectoryChart or similar components.
-
----
-
-## 🧮 FICO Score Model
-
-### Scoring Factors
-| Payment History | 35% | On-time payments, late payments, collections |
-| Credit Utilization | 30% | % of available credit in use |
-| Age of Credit | 15% | Average account age & oldest account |
-| New Credit | 10% | Recent inquiries & new accounts |
-| Credit Mix | 10% | Variety of account types |
-
-### Score Range
-- 300-579: Poor
-- 580-669: Fair  
-- 670-739: Good
-- 740-799: Very Good
-- 800-850: Excellent
-
-### Score Model Variants
-
-- `linear` (default): simplified linear aggregator used by the engine for MVP
-- `fico8`: FICO-8 style bucketed scoring model (more realistic, uses explicit
-  bins for utilization, age, payment history, new credit, and mix)
-
-You can request a specific model when calling the API endpoints by supplying
-the `model` query parameter (for example: `POST /score?model=fico8`).
-
----
-
-## 📝 Environment Setup
-
-### Backend (.env)
-```
-ENVIRONMENT=development
-SUPABASE_URL=your_supabase_url
-SUPABASE_KEY=your_supabase_key
-DATABASE_URL=postgresql://user:password@localhost:5432/ghostscore
-```
-
-4. **Migrations for Scenario Features**
-  - Ensure you run all Alembic migrations to add scenario history, tags, pinned, and feedback columns:
-    - `alembic upgrade head` (applies all migrations, including 0003_add_tags_to_scenario_history.py, 0004_add_pinned_to_scenario_history.py, 0005_add_feedback_to_scenario_history.py)
-  - If you encounter DB errors, check `backend/alembic/versions/` for migration scripts and re-run as needed.
-
-5. **Testing New Features**
-  - Backend: See `backend/tests/` for scenario pinning, feedback, analytics tests.
-  - Frontend: Scenario history, comparison, pinning, and export are covered in Playwright and Jest tests.
-### Frontend (.env.local)
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
----
-
-## 🔄 Development Workflow
-
-1. **Run Backend**
-   ```bash
-   cd backend
-   python -m venv venv && source venv/bin/activate
-   pip install -r requirements.txt
-   uvicorn main:app --reload
-   ```
-
-2. **Run Frontend**
-   ```bash
-   cd frontend
-   npm install && npm run dev
-   ```
-
-3. **Test API**
-   Visit `http://localhost:8000/docs` for interactive API testing
-
-4. **Access App**
-   Visit `http://localhost:3000` in browser
-
----
-
-## 🗄️ Database Setup
-
-### Using Supabase (Recommended)
-
-1. Create Supabase project
-2. Go to SQL Editor
-3. Copy and run [database/schema.sql](database/schema.sql)
-4. Update `.env` with Supabase credentials
-
-### Local PostgreSQL
-
-```bash
-# Create database
-createdb ghostscore
-
-# Run schema
-psql ghostscore < database/schema.sql
-```
-
----
-
-## 🔗 Quick Links
-
-- API server: [backend/main.py](backend/main.py)
-- Frontend: [frontend/](frontend/)
-- Database schema: [database/schema.sql](database/schema.sql)
-- Alembic migrations: [backend/alembic/](backend/alembic/)
-- CI workflow: [.github/workflows/ci.yml](.github/workflows/ci.yml)
-
-## 🚀 Getting Started (Recommended: Docker)
-
-1. Copy environment example and adjust values:
-
-```bash
-cp .env.example .env
-```
-
-2. Start database and backend with Docker Compose:
-
-```bash
-docker-compose up -d db
-docker-compose build backend
-docker-compose up -d backend
-```
-
-3. Verify API at `http://localhost:8000` and docs at `http://localhost:8000/docs`.
-
-**Notes:**
-- To apply migrations on startup, set `MIGRATE_ON_STARTUP=true` in `.env` (default: `false`)
-- The Postgres init SQL file is mounted from `database/schema.sql`
-
-## 💻 Local Development (Without Docker)
-
-**Backend**
-
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp ../.env.example .env
-uvicorn main:app --reload
-```
-
-**Frontend**
-
-```bash
-cd frontend
-npm ci
-npm run dev
-```
-
-Frontend runs at `http://localhost:3000`
-
-## 🗄️ Database Migrations
-
-Migrations are managed with Alembic. To run migrations locally:
-
-```bash
-export DATABASE_URL=postgresql://user:pass@localhost:5432/ghostscore
-alembic -c backend/alembic.ini upgrade head
-```
-
-## ✅ Testing
-
-**Backend**
-
-```bash
-cd backend
-pytest -q
-```
-
-**Frontend**
-
-```bash
-cd frontend
-npm test
-```
-
-**E2E Tests (Playwright)**
-
-```bash
-cd frontend
-npm run e2e
-npm run e2e:show  # View report
-```
-
-## 🧹 Linting & Formatting
-
-- **Python**: `black`, `isort`, and `ruff` configured. Run `pre-commit install` to enable hooks
-- **Frontend**: `npm run lint` via Next.js built-in linter
 
 ## 📚 Documentation
 
-- **API Docs**: Auto-generated at `http://localhost:8000/docs` (Swagger UI)
-- **OpenAPI JSON**: Generated via `scripts/generate_openapi.py` → `docs/openapi.json`
-- **Phase Documentation**:
-  - [Phase 2 Status](PHASE2_COMPLETION.md)
-  - [Phase 3 Architecture](PHASE3_FINTECH_ARCHITECTURE.md)
-  - [Phase 4 Scenario Analysis](PHASE4_SCENARIO_ANALYSIS.md)
+- [Full Feature Overview](FEATURES.md)
+- [API Reference](docs/API.md)
+- [Development Guide](docs/DEVELOPMENT.md)
+- [Quickstart](docs/QUICKSTART.md)
 
-## 🤝 Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development and PR guidelines.
+---
 
 ## 📋 Roadmap
 
 **Phase 5 (Complete)**
 - Persistent improvement tracking (historical scenarios, scenario analytics, timeline, tagging, notes, feedback, pinning, multi-compare)
 - Advanced export functionality (PDF reports, action plans, scenario comparison)
+- Multi-model scoring, composite endpoints, per-model calibration, timeline realism, goal solver, explainability, score stability index, versioning, auditability, and full persistence.
 
 **Next Phases**
-- Mobile app (React Native)
-- ML-based action sequencing optimization
-- Predictive score forecasting
-- Credit report auto-import
 - Advisor network integration
+- Mobile app (React Native)
 
 **Current Enhancements**
 - Coverage thresholds enforced in CI (backend 80%+)
@@ -583,4 +156,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development and PR guidelines.
 
 ---
 
-MIT License — see `LICENSE`
+## 📜 Full Feature Overview
+
+See [FEATURES.md](FEATURES.md) for a comprehensive list of all GhostScore features, endpoints, ML/AI capabilities, analytics, and planned enhancements.
+
+- All core, advanced, and ML-driven features are documented in FEATURES.md for easy reference and onboarding.
+cd backend

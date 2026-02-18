@@ -1,5 +1,7 @@
 # GhostScore Development Guide
 
+GhostScore is a lender-grade, production-complete, AI-powered credit intelligence engine. All endpoints are versioned, auditable, and support multi-model scoring, calibration, timeline realism, goal solving, and advanced analytics. See [FEATURES.md](../FEATURES.md) for a full feature list.
+
 ## Setup Guide
 
 ### 1. Clone Repository

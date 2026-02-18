@@ -1,5 +1,7 @@
 # GhostScore API Documentation
 
+GhostScore is a lender-grade, production-complete, AI-powered credit intelligence engine. All endpoints are versioned, auditable, and support multi-model scoring, calibration, timeline realism, goal solving, and advanced analytics. See [FEATURES.md](../FEATURES.md) for a full feature list.
+
 ## Base URL
 ```
 http://localhost:8000
@@ -25,23 +27,123 @@ Response: 200 OK
 ## Credit Score Endpoints
 ---
 
-### Calibrate Profile
+### Multi-Model Scoring
 
-**Run calibration for a profile to improve score accuracy using real credit report data.**
+**Get scores for all supported models (FICO 8, FICO 9, FICO 10, linear), with version and hash for auditability.**
+
+```
+POST /score/multi
+Content-Type: application/json
+
+Body:
+{
+  "profile": { ... },
+  "models": ["fico8", "fico9", "fico10", "linear"]
+}
+
+Response: 200 OK
+{
+  "fico8": {"score": 712, "version": "8.0.0", "hash": "..."},
+  "fico9": {"score": 705, "version": "9.0.0", "hash": "..."},
+  ...
+}
+```
+
+### Composite Score
+
+**Get composite score (average/weighted) across models, with version and hash.**
+
+```
+POST /score/composite
+Content-Type: application/json
+
+Body:
+{
+  "profile": { ... },
+  "models": ["fico8", "fico9", "fico10", "linear"]
+}
+
+Response: 200 OK
+{
+  "composite": 710,
+  "versions": "8.0.0,9.0.0,10.0.0,1.0.0",
+  "hash": "..."
+}
+```
+
+### Score Stability Index
+
+**Get score stability index (volatility/consistency metric) for a profile.**
+
+```
+POST /score/stability
+Content-Type: application/json
+
+Body:
+{
+  "profile": { ... },
+  "models": ["fico8", "fico9", "fico10", "linear"]
+}
+
+Response: 200 OK
+{
+  "stability_index": 4.2
+}
+```
+
+### Goal Solver
+
+**Compute optimal strategy sequence to reach a target score under budget/timeline constraints, with multi-model/composite support and Monte Carlo simulation.**
+
+```
+POST /optimize/goal
+Content-Type: application/json
+
+Body:
+{
+  "profile": { ... },
+  "target_score": 720,
+  "budget": 2000,
+  "timeline_weeks": 16,
+  "deterministic": true
+}
+
+Response: 200 OK
+{
+  "current_score": 650,
+  "target_score": 720,
+  "best_plan": { ... },
+  "alternatives": [ ... ]
+}
+```
+
+### Calibration (Per Model)
+
+**Submit actual score for a profile to calibrate future estimates (per model).**
 
 ```
 POST /profiles/{profile_id}/calibrate
 Content-Type: application/json
 
+Body:
+{
+  "estimated_score": 700,
+  "actual_score": 715,
+  "model": "fico8"
+}
+
 Response: 200 OK
 {
-  "message": "Calibration complete! Correction factors updated."
+  "profile_id": "...",
+  "correction": 15
 }
 ```
 
-**Errors:**
-- 404 Not Found: Profile not found
-- 500 Server Error: Calibration failed
+### Auditability & Versioning
+
+- All score endpoints return model name, version, and a score hash for full auditability and reproducibility.
+- All scores and scenarios are persisted with model version and hash.
+- Profile snapshots are saved for every scoring event.
 
 ---
 
