@@ -29,6 +29,7 @@ interface ActionPriorityListProps {
 export default function ActionPriorityList({
   actions,
   onSelectAction,
+  selectedIndexes,
 }: ActionPriorityListProps) {
   if (!actions || actions.length === 0) {
     return (
@@ -105,7 +106,7 @@ export default function ActionPriorityList({
 
       <div className="space-y-3">
         {actions.map((action, index) => {
-          const isSelected = Array.isArray(selectedIndexes) && selectedIndexes.includes(index)
+          const isSelected = Array.isArray(selectedIndexes) && selectedIndexes.includes(index);
           return (
             <div
               key={index}
@@ -114,79 +115,80 @@ export default function ActionPriorityList({
               )} ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
               onClick={() => onSelectAction?.(action)}
             >
-            <div className="flex items-start gap-4">
-              <div className="mt-1">{getActionIcon(action.type)}</div>
+              <div className="flex items-start gap-4">
+                <div className="mt-1">{getActionIcon(action.type)}</div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div>
-                    <h4 className="font-semibold text-slate-900 capitalize">
-                      {action.type.replace(/_/g, ' ')}
-                    </h4>
-                    <p className="text-sm text-slate-600 mt-1">
-                      {action.description}
-                    </p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <h4 className="font-semibold text-slate-900 capitalize">
+                        {action.type.replace(/_/g, ' ')}
+                      </h4>
+                      <p className="text-sm text-slate-600 mt-1">
+                        {action.description}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      {getPriorityBadge(action.priority)}
+                    </div>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    {getPriorityBadge(action.priority)}
+
+                  {/* Details */}
+                  <div className="grid grid-cols-2 gap-3 mt-3 text-sm">
+                    <div>
+                      <p className="text-xs text-slate-600">Estimated Score Gain</p>
+                      <p className="text-lg font-bold text-green-600">
+                        +{action.estimated_gain}
+                      </p>
+                    </div>
+
+                    {action.paydown_amount && (
+                      <div>
+                        <p className="text-xs text-slate-600">Amount to Pay</p>
+                        <p className="text-lg font-bold text-blue-600">
+                          ${action.paydown_amount.toLocaleString('en-US', {
+                            maximumFractionDigits: 0,
+                          })}
+                        </p>
+                      </div>
+                    )}
+
+                    {action.current_balance !== undefined && (
+                      <div>
+                        <p className="text-xs text-slate-600">Current Balance</p>
+                        <p className="text-sm text-slate-700">
+                          ${action.current_balance.toLocaleString('en-US', {
+                            maximumFractionDigits: 0,
+                          })}
+                        </p>
+                      </div>
+                    )}
+
+                    {action.target_balance !== undefined && (
+                      <div>
+                        <p className="text-xs text-slate-600">Target Balance</p>
+                        <p className="text-sm text-slate-700">
+                          ${action.target_balance.toLocaleString('en-US', {
+                            maximumFractionDigits: 0,
+                          })}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Details */}
-                <div className="grid grid-cols-2 gap-3 mt-3 text-sm">
-                  <div>
-                    <p className="text-xs text-slate-600">Estimated Score Gain</p>
-                    <p className="text-lg font-bold text-green-600">
-                      +{action.estimated_gain}
-                    </p>
+                {/* Rank Badge */}
+                {action.rank && (
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
+                    <span className="font-bold text-slate-700 text-sm">
+                      {action.rank}
+                    </span>
                   </div>
-
-                  {action.paydown_amount && (
-                    <div>
-                      <p className="text-xs text-slate-600">Amount to Pay</p>
-                      <p className="text-lg font-bold text-blue-600">
-                        ${action.paydown_amount.toLocaleString('en-US', {
-                          maximumFractionDigits: 0,
-                        })}
-                      </p>
-                    </div>
-                  )}
-
-                  {action.current_balance !== undefined && (
-                    <div>
-                      <p className="text-xs text-slate-600">Current Balance</p>
-                      <p className="text-sm text-slate-700">
-                        ${action.current_balance.toLocaleString('en-US', {
-                          maximumFractionDigits: 0,
-                        })}
-                      </p>
-                    </div>
-                  )}
-
-                  {action.target_balance !== undefined && (
-                    <div>
-                      <p className="text-xs text-slate-600">Target Balance</p>
-                      <p className="text-sm text-slate-700">
-                        ${action.target_balance.toLocaleString('en-US', {
-                          maximumFractionDigits: 0,
-                        })}
-                      </p>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
-
-              {/* Rank Badge */}
-              {action.rank && (
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
-                  <span className="font-bold text-slate-700 text-sm">
-                    {action.rank}
-                  </span>
-                </div>
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">

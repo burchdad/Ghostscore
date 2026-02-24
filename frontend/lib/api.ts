@@ -1,15 +1,6 @@
-  // ML Score Forecasting
-  async forecastScore(profile: CreditProfile, weeks: number = 16): Promise<{ forecast: number[]; weeks: number }> {
-    const response = await fetch(`${API_BASE_URL}/score/forecast`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, weeks }),
-    })
-    if (!response.ok) throw new Error('Failed to forecast score')
-    return response.json()
-  },
-// ...existing code...
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+// Use Next.js API proxy for all requests (routes through /api)
+const API_BASE_URL = '/api'
 
 export interface Account {
   id: string
@@ -99,15 +90,58 @@ export const apiClient = {
   },
 
   async getProfiles(email: string): Promise<ProfileSummary[]> {
-    const response = await fetch(`${API_BASE_URL}/profiles/${encodeURIComponent(email)}`)
-    if (!response.ok) throw new Error('Failed to get profiles')
-    return response.json()
+    const url = `${API_BASE_URL}/profiles/${encodeURIComponent(email)}`
+    console.log('Fetching profiles from:', url)
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        }
+      })
+      console.log('Response status:', response.status, response.statusText)
+      console.log('Response headers:', response.headers)
+      if (!response.ok) {
+        const text = await response.text()
+        console.error('Error response body:', text)
+        throw new Error(`Failed to get profiles: ${response.status} ${response.statusText}`)
+      }
+      const data = await response.json()
+      console.log('Profiles loaded:', data)
+      return data
+    } catch (err) {
+      console.error('getProfiles error:', err)
+      throw err
+    }
   },
 
   async getFullProfile(profileId: string): Promise<CreditProfile> {
-    const response = await fetch(`${API_BASE_URL}/profiles/${profileId}/full`)
-    if (!response.ok) throw new Error('Failed to get profile')
-    return response.json()
+    const url = `${API_BASE_URL}/profiles/${profileId}/full`
+    console.log('Fetching full profile from:', url)
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        }
+      })
+      console.log('Full profile response status:', response.status)
+      if (!response.ok) {
+        const text = await response.text()
+        console.error('Error response body:', text)
+        throw new Error(`Failed to get profile: ${response.status} ${response.statusText}`)
+      }
+      const data = await response.json()
+      console.log('Full profile loaded:', data)
+      return data
+    } catch (err) {
+      console.error('getFullProfile error:', err)
+      throw err
+    }
   },
 
   // Account endpoints
@@ -118,6 +152,24 @@ export const apiClient = {
       body: JSON.stringify(account),
     })
     if (!response.ok) throw new Error('Failed to add account')
+    return response.json()
+  },
+
+  async deleteAccount(profileId: string, accountId: string): Promise<{ deleted: boolean }> {
+    const response = await fetch(`${API_BASE_URL}/profiles/${profileId}/accounts/${accountId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    if (!response.ok) throw new Error('Failed to delete account')
+    return response.json()
+  },
+
+  async deleteAllAccounts(profileId: string): Promise<{ deleted: number; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/profiles/${profileId}/accounts-all`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    if (!response.ok) throw new Error('Failed to delete all accounts')
     return response.json()
   },
 
@@ -189,16 +241,35 @@ export const apiClient = {
   },
 
   async uploadCreditReport(profileId: string, bureau: string, file: File): Promise<any> {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('bureau', bureau)
-    
-    const response = await fetch(`${API_BASE_URL}/profiles/${profileId}/upload-credit-report`, {
-      method: 'POST',
-      body: formData,
-    })
-    if (!response.ok) throw new Error('Failed to upload credit report')
-    return response.json()
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('bureau', bureau)
+      
+      const url = `${API_BASE_URL}/profiles/${profileId}/upload-credit-report`
+      console.log('Uploading credit report to:', url, {bureau, fileName: file.name, fileSize: file.size})
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        // Let the browser set Content-Type header automatically for FormData
+      })
+      
+      console.log('Upload response status:', response.status, response.statusText)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Upload error response:', errorText)
+        throw new Error(`Upload failed: ${response.status} ${response.statusText}`)
+      }
+      
+      const result = await response.json()
+      console.log('Upload successful:', result)
+      return result
+    } catch (err) {
+      console.error('uploadCreditReport error:', err)
+      throw err
+    }
   },
 
   async importAccountsFromReport(profileId: string, accounts: any[], selectedIndices?: number[]): Promise<any> {
@@ -240,6 +311,61 @@ export const apiClient = {
       headers: { 'Content-Type': 'application/json' },
     })
     if (!response.ok) throw new Error('Failed to calibrate profile')
+    return response.json()
+  },
+
+  // Composite score endpoint
+  async scoreComposite(profile: CreditProfile): Promise<{ composite: number }> {
+    const response = await fetch(`${API_BASE_URL}/score/composite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
+    })
+    if (!response.ok) throw new Error('Failed to get composite score')
+    return response.json()
+  },
+
+  // All models scores
+  async scoreAllModels(profile: CreditProfile): Promise<{ fico8: number; fico9: number; fico10: number }> {
+    const response = await fetch(`${API_BASE_URL}/score/all`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
+    })
+    if (!response.ok) throw new Error('Failed to get all model scores')
+    return response.json()
+  },
+
+  // Stability index
+  async getScoreStability(profile: CreditProfile): Promise<{ stability_index: number; risk_level: string }> {
+    const response = await fetch(`${API_BASE_URL}/score/stability`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
+    })
+    if (!response.ok) throw new Error('Failed to get stability index')
+    return response.json()
+  },
+
+  // Forecast score
+  async forecastScore(profile: CreditProfile, weeks: number = 16): Promise<number[]> {
+    const response = await fetch(`${API_BASE_URL}/score/forecast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile, weeks }),
+    })
+    if (!response.ok) throw new Error('Failed to forecast score')
+    return response.json()
+  },
+
+  // Optimize endpoint
+  async optimizeProfile(profile: CreditProfile): Promise<{ recommended_actions: any[] }> {
+    const response = await fetch(`${API_BASE_URL}/optimize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
+    })
+    if (!response.ok) throw new Error('Failed to optimize profile')
     return response.json()
   },
 }

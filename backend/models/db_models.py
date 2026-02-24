@@ -3,7 +3,7 @@ SQLAlchemy models for GhostScore
 Maps to database schema
 """
 
-from sqlalchemy import Column, String, Float, Date, DateTime, Integer, ForeignKey, Text, JSON, func
+from sqlalchemy import Column, String, Float, Date, DateTime, Integer, ForeignKey, Text, JSON, func, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime

@@ -1,86 +1,100 @@
-// Download action plan PDF for the current profile
-const downloadActionPlan = async (profileId: string) => {
-  if (!profileId) return
-  try {
-    const blob = await apiClient.downloadActionPlanPdf(profileId)
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `action_plan_${profileId}.pdf`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(url)
-    toast.success('Action plan PDF downloaded!')
-  } catch (err) {
-    toast.error('Failed to download action plan PDF')
-  }
-}
-'use client'
 
-import { useEffect, useState } from 'react'
-// Download PDF report for the current profile
-const downloadProfileReport = async (profileId: string) => {
-  if (!profileId) return
-  try {
-    const blob = await apiClient.downloadProfilePdf(profileId)
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `profile_${profileId}_report.pdf`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(url)
-    toast.success('PDF report downloaded!')
-  } catch (err) {
-    toast.error('Failed to download PDF report')
-  }
-}
+"use client";
 
-import { useStore } from '@/lib/store'
-import { apiClient } from '@/lib/api'
-import ScoreCard from './ScoreCard'
-import SubscoreChart from './SubscoreChart'
-import RecommendationsPanel from './RecommendationsPanel'
-import AccountsList from './AccountsList'
-import ScenarioSimulator from './ScenarioSimulator'
-import ScoreTrends from './ScoreTrends'
-import ScoreTrajectoryChart from './ScoreTrajectoryChart'
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useStore } from '@/lib/store';
+import { apiClient } from '@/lib/api';
+import CreditCommandCenter from './CreditCommandCenter';
+import ScoreCard from './ScoreCard';
+import SubscoreChart from './SubscoreChart';
+import RecommendationsPanel from './RecommendationsPanel';
+import AccountsList from './AccountsList';
+import ScenarioSimulator from './ScenarioSimulator';
+import ScoreTrends from './ScoreTrends';
+import ScoreTrajectoryChart from './ScoreTrajectoryChart';
+import ScoreFactorsRadar from './ScoreFactorsRadar';
+import ScenarioHistory from './ScenarioHistory'
+import ScoreStabilityPanel from './ScoreStabilityPanel'
+import ActionPriorityList, { Action } from './ActionPriorityList';
+import SimulatorSlider from './SimulatorSlider';
+import toast, { Toaster } from 'react-hot-toast';
 
 // ML Score Forecast Chart
-import { useEffect as useEffectML, useState as useStateML } from 'react'
-  // ML Score Forecast state
-  const [mlForecast, setMlForecast] = useStateML<number[] | null>(null)
-  const [mlForecastWeeks, setMlForecastWeeks] = useStateML<number>(16)
-  // Fetch ML score forecast when profile changes
-  useEffectML(() => {
-    const fetchForecast = async () => {
-      if (!profile || profile.accounts.length === 0) {
-        setMlForecast(null)
-        return
-      }
+import { useEffect as useEffectML, useState as useStateML } from 'react';
+
+// Download action plan PDF for the current profile
+const downloadActionPlan = async (profileId: string) => {
+  if (!profileId) return;
+  try {
+    const blob = await apiClient.downloadActionPlanPdf(profileId);
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `action_plan_${profileId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    toast.success('Action plan PDF downloaded!');
+  } catch (err) {
+    toast.error('Failed to download action plan PDF');
+  }
+};
+
+// Download PDF report for the current profile
+const downloadProfileReport = async (profileId: string) => {
+  if (!profileId) return;
+  try {
+    const blob = await apiClient.downloadProfilePdf(profileId);
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `profile_${profileId}_report.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    toast.success('PDF report downloaded!');
+  } catch (err) {
+    toast.error('Failed to download PDF report');
+  }
+};
+
+// Multi-model and composite score panel
+function MultiModelScorePanel({ profile }: { profile: any }) {
+  const [scores, setScores] = useState<{ [model: string]: number } | null>(null);
+  useEffect(() => {
+    if (!profile || !profile.accounts || profile.accounts.length === 0) {
+      setScores(null);
+      return;
+    }
+    async function fetchScores() {
       try {
-        const resp = await apiClient.forecastScore(profile, mlForecastWeeks)
-        setMlForecast(resp.forecast)
-        setMlForecastWeeks(resp.weeks)
+        const composite = await apiClient.scoreComposite(profile);
+        setScores(composite);
       } catch (err) {
-        setMlForecast(null)
+        setScores(null);
       }
     }
-    fetchForecast()
-  }, [profile, mlForecastWeeks])
-import ScoreFactorsRadar from './ScoreFactorsRadar'
-import ScenarioHistory from './ScenarioHistory'
-import ActionPriorityList from './ActionPriorityList'
-import type { Action } from './ActionPriorityList'
-import SimulatorSlider from './SimulatorSlider'
-import toast, { Toaster } from 'react-hot-toast'
-import { useRef, useCallback } from 'react'
+    fetchScores();
+  }, [profile]);
+  if (!scores) return null;
+  return (
+    <div className="bg-white rounded shadow p-4 mb-4">
+      <h3 className="font-bold text-lg mb-2">Multi-Model Scores</h3>
+      <div className="flex gap-4">
+        <div>FICO 8: <span className="font-mono text-blue-700">{scores.fico8}</span></div>
+        <div>FICO 9: <span className="font-mono text-green-700">{scores.fico9}</span></div>
+        <div>FICO 10: <span className="font-mono text-purple-700">{scores.fico10}</span></div>
+        <div>Composite: <span className="font-mono text-pink-700">{scores.composite}</span></div>
+      </div>
+    </div>
+  );
+}
 
 // CalibrationPanel: Modal for calibration actions
 function CalibrationPanel({ open, onClose, onCalibrate, loading, result }: { open: boolean, onClose: () => void, onCalibrate: () => void, loading: boolean, result: string | null }) {
-  if (!open) return null
+  if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
@@ -104,44 +118,42 @@ function CalibrationPanel({ open, onClose, onCalibrate, loading, result }: { ope
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 interface ScoreTrend {
-  date: string
-  score: number
+  date: string;
+  score: number;
 }
 
 interface TimelinePoint {
-  week: number
-  score: number
-  milestone: string
+  week: number;
+  score: number;
+  milestone: string;
 }
 
-
-
 interface OptimizeResponse {
-  current_score: number
-  scorecard: string
-  scorecard_description: string
-  recommended_actions: Action[]
-  improvement_timeline: TimelinePoint[]
-  total_potential_gain: number
+  current_score: number;
+  scorecard: string;
+  scorecard_description: string;
+  recommended_actions: Action[];
+  improvement_timeline: TimelinePoint[];
+  total_potential_gain: number;
 }
 
 // Save a score snapshot after calculating score
 const saveScoreSnapshot = async (profileId: string, scoreData: any) => {
-  if (!profileId) return
+  if (!profileId) return;
   try {
-    await apiClient.saveScoreSnapshot(profileId, scoreData)
+    await apiClient.saveScoreSnapshot(profileId, scoreData);
   } catch (err) {
-    console.log('Failed to save score snapshot')
+    console.log('Failed to save score snapshot');
   }
-}
+};
 
 // Save scenario run to backend after simulation
 const saveScenarioRun = async (profileId: string, actions: any[], originalScore: number, simulatedScore: number, timeline: any[] = [], notes: string = '') => {
-  if (!profileId) return
+  if (!profileId) return;
   try {
     await apiClient.saveScenarioHistory(profileId, {
       actions,
@@ -150,108 +162,142 @@ const saveScenarioRun = async (profileId: string, actions: any[], originalScore:
       actual_gain: simulatedScore - originalScore,
       timeline,
       notes,
-    })
-    toast.success('Scenario saved to history!')
+    });
+    toast.success('Scenario saved to history!');
   } catch (err) {
-    toast.error('Failed to save scenario history')
+    toast.error('Failed to save scenario history');
   }
-}
-
+};
 
 export default function Dashboard() {
-  const { profile, score, setScore, setLoading, setError, currentProfileId } = useStore()
-  const [scoreTrends, setScoreTrends] = useState<ScoreTrend[]>([])
-  const [optimizeData, setOptimizeData] = useState<OptimizeResponse | null>(null)
-  const [selectedActions, setSelectedActions] = useState<number[]>([])
-  const [scenarioScore, setScenarioScore] = useState<number | null>(null)
+  const { profile, score, setScore, setLoading, setError, currentProfileId } = useStore();
+  const [scoreTrends, setScoreTrends] = useState<ScoreTrend[]>([]);
+  const [optimizeData, setOptimizeData] = useState<OptimizeResponse | null>(null);
+  const [selectedActions, setSelectedActions] = useState<number[]>([]);
+  const [scenarioScore, setScenarioScore] = useState<number | null>(null);
   const [confidenceScenarios, setConfidenceScenarios] = useState<{
-    optimistic: number
-    realistic: number
-    conservative: number
-  } | null>(null)
+    optimistic: number;
+    realistic: number;
+    conservative: number;
+  } | null>(null);
   // Calibration modal state
-  const [calibOpen, setCalibOpen] = useState(false)
-  const [calibLoading, setCalibLoading] = useState(false)
-  const [calibResult, setCalibResult] = useState<string | null>(null)
+  const [calibOpen, setCalibOpen] = useState(false);
+  const [calibLoading, setCalibLoading] = useState(false);
+  const [calibResult, setCalibResult] = useState<string | null>(null);
+
+  // ML Score Forecast state
+  const [mlForecast, setMlForecast] = useStateML<number[] | null>(null);
+  const [mlForecastWeeks, setMlForecastWeeks] = useStateML<number>(16);
+  useEffect(() => {
+    const fetchForecast = async () => {
+      if (!profile || profile.accounts.length === 0) {
+        setMlForecast(null);
+        return;
+      }
+      try {
+        const forecast = await apiClient.forecastScore(profile, mlForecastWeeks);
+        setMlForecast(forecast);
+      } catch (err) {
+        setMlForecast(null);
+      }
+    };
+    fetchForecast();
+  }, [profile, mlForecastWeeks]);
 
   useEffect(() => {
-    calculateScore()
+    calculateScore();
     if (currentProfileId) {
-      fetchScoreTrends()
+      fetchScoreTrends();
     }
-  }, [profile, currentProfileId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, currentProfileId]);
 
   useEffect(() => {
-    runOptimizer()
-  }, [profile, score])
+    runOptimizer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, score]);
 
   // Calibration handler
   const handleCalibrate = useCallback(async () => {
-    if (!currentProfileId) return
-    setCalibLoading(true)
-    setCalibResult(null)
+    if (!currentProfileId) return;
+    setCalibLoading(true);
+    setCalibResult(null);
     try {
-      const resp = await apiClient.calibrateProfile(currentProfileId)
-      setCalibResult(resp?.message || 'Calibration complete!')
-      toast.success('Calibration complete!')
+      const resp = await apiClient.calibrateProfile(currentProfileId);
+      setCalibResult(resp?.message || 'Calibration complete!');
+      toast.success('Calibration complete!');
     } catch (err) {
-      setCalibResult('Calibration failed.')
-      toast.error('Calibration failed')
+      setCalibResult('Calibration failed.');
+      toast.error('Calibration failed');
     } finally {
-      setCalibLoading(false)
+      setCalibLoading(false);
     }
-  }, [currentProfileId])
+  }, [currentProfileId]);
 
   const calculateScore = async () => {
-    if (profile.accounts.length === 0) return
-
+    if (profile.accounts.length === 0) return;
     try {
-      setLoading(true)
-      const result = await apiClient.calculateScore(profile)
-      setScore(result)
-      setError(null)
+      setLoading(true);
+      const result = await apiClient.calculateScore(profile);
+      setScore(result);
+      setError(null);
       // Save score snapshot for persistent tracking
-      await saveScoreSnapshot(currentProfileId, result)
+      await saveScoreSnapshot(currentProfileId, result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-      toast.error('Failed to calculate score')
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      toast.error('Failed to calculate score');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const runOptimizer = async () => {
-    if (profile.accounts.length === 0) return
-
+    if (profile.accounts.length === 0) return;
     try {
-      const response = await fetch('/api/optimize', {
+      const res = await fetch('/api/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profile),
-      }).then(res => res.json())
-      setOptimizeData(response)
+      });
       
+      if (!res.ok) {
+        console.log('Optimizer not available');
+        setOptimizeData(null);
+        return;
+      }
+      
+      const response = await res.json();
+      
+      // Validate response has required fields
+      if (!response.recommended_actions) {
+        console.log('Invalid optimizer response');
+        setOptimizeData(null);
+        return;
+      }
+      
+      setOptimizeData(response);
       // Calculate confidence intervals
-      const baseGain = response.total_potential_gain
+      const baseGain = response.total_potential_gain || 0;
       setConfidenceScenarios({
         optimistic: response.current_score + baseGain,
-        realistic: response.current_score + (baseGain * 0.7),
-        conservative: response.current_score + (baseGain * 0.4),
-      })
+        realistic: response.current_score + baseGain * 0.7,
+        conservative: response.current_score + baseGain * 0.4,
+      });
     } catch (err) {
-      console.log('Optimizer not available')
+      console.log('Optimizer not available');
+      setOptimizeData(null);
     }
-  }
+  };
 
   const fetchScoreTrends = async () => {
-    if (!currentProfileId) return
+    if (!currentProfileId) return;
     try {
-      const trends = await apiClient.getScoreHistoryFull(currentProfileId)
-      setScoreTrends(trends.map(e => ({ date: e.created_at, score: e.score })))
+      const trends = await apiClient.getScoreHistoryFull(currentProfileId);
+      setScoreTrends(trends.map(e => ({ date: e.created_at, score: e.score })));
     } catch (err) {
-      console.log('No score history yet')
+      console.log('No score history yet');
     }
-  }
+  };
 
   const handleActionToggle = (actionIndex: number) => {
     setSelectedActions(prev =>
@@ -266,7 +312,6 @@ export default function Dashboard() {
       toast.error('Select at least one action');
       return;
     }
-
     try {
       let simulatedProfile = { ...profile };
       let totalGain = 0;
@@ -325,6 +370,18 @@ export default function Dashboard() {
       <CalibrationPanel open={calibOpen} onClose={() => setCalibOpen(false)} onCalibrate={handleCalibrate} loading={calibLoading} result={calibResult} />
       <Toaster position="top-right" />
 
+      {/* Credit Command Center - Institutional Grade Dashboard */}
+      {/* Temporarily disabled while backend APIs are being finalized */}
+      {currentProfileId && (
+        <div className="mb-12">
+          <h1 className="text-4xl font-bold text-white mb-6">Credit Command Center</h1>
+          <CreditCommandCenter />
+        </div>
+      )}
+
+      {/* Score Stability Index */}
+      {currentProfileId && <ScoreStabilityPanel profileId={currentProfileId} />}
+      
       {/* Score and Subscores */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1">
@@ -436,13 +493,13 @@ export default function Dashboard() {
               Simulate {selectedActions.length > 0 ? `(${selectedActions.length})` : ''}
             </button>
           </div>
-            <ActionPriorityList
-              actions={optimizeData.recommended_actions.map((a, idx) => ({ ...a, _idx: idx }))}
-              onSelectAction={(action: Action & { _idx?: number }) => {
-                if (typeof action._idx === 'number') handleActionToggle(action._idx)
-              }}
-              selectedIndexes={selectedActions}
-            />
+          <ActionPriorityList
+            actions={optimizeData.recommended_actions.map((a, idx) => ({ ...a, _idx: idx }))}
+            onSelectAction={(action: Action & { _idx?: number }) => {
+              if (typeof action._idx === 'number') handleActionToggle(action._idx);
+            }}
+            selectedIndexes={selectedActions}
+          />
           {scenarioScore && (
             <div className="mt-4 p-4 bg-blue-50 rounded border border-blue-200">
               <p className="text-sm text-blue-700">
@@ -466,9 +523,7 @@ export default function Dashboard() {
       </div>
 
       {/* Scenario History */}
-      {currentProfileId && (
-        <ScenarioHistory profileId={currentProfileId} />
-      )}
+      {currentProfileId && <ScenarioHistory profileId={currentProfileId} />}
     </div>
-  )
+  );
 }

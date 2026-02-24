@@ -21,6 +21,7 @@ export default function ProfileSelector() {
       const profile = await apiClient.createProfile(userEmail, newProfileName)
       useStore.setState((state) => ({
         availableProfiles: [...state.availableProfiles, profile],
+        currentProfileId: profile.id, // Auto-select newly created profile
       }))
       setNewProfileName('')
       toast.success('Profile created!')

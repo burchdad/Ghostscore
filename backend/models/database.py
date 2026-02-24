@@ -16,9 +16,10 @@ DATABASE_URL = os.getenv(
     "sqlite:///./ghostscore.db"
 )
 
-# SQLite-specific options
+
+# Database-specific options
 connect_args = {}
-if "sqlite" in DATABASE_URL:
+if DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False, "timeout": 30}
 
 # Create engine

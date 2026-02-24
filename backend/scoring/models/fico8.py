@@ -1,3 +1,10 @@
+# Model class for registry
+class Fico8Model:
+    def score(self, features):
+        # Use the same logic as aggregate_score, but expects features as input
+        # For now, treat features as subscores for compatibility
+        # Use 'prime' scorecard by default
+        return aggregate_score(features, 'prime')
 """
 FICO8-style bin scoring model
 

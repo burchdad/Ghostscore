@@ -2,28 +2,41 @@ version: '3.8'
 services:
   db:
     image: postgres:15
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: ghostscore
-      POSTGRES_USER: ghostscore
-      POSTGRES_PASSWORD: ghostscore
+      POSTGRES_DB: ghostscore_clean
+      POSTGRES_USER: ghostscore_clean
+      POSTGRES_PASSWORD: ghostscore_clean
     volumes:
-      - db_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - db_data_clean:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ghostscore_clean"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://ghostscore:ghostscore@db:5432/ghostscore
+      DATABASE_URL: postgresql://ghostscore_clean:ghostscore_clean@db:5432/ghostscore_clean
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
-  db_data:
+  db_data_clean:

@@ -80,46 +80,45 @@ class FicoEngine:
         """Create engine instance. Pass `model='fico8'` to use bucketed model."""
         self.model_name = model or self.DEFAULT_MODEL
 
-    def calculate_full_score(self, credit_profile: Union[Dict, Any]) -> Dict[str, Any]:
+    def compute_stability_index(self, score_history: list) -> float:
         """
-        Calculate complete FICO score using 4-layer architecture.
-        
-        Args:
-            credit_profile: CreditProfile object or dict with 'accounts'/'derogatories'
-            
-        Returns:
-            Dict with score, subscores, scorecard, and details
+        Compute Score Stability Index for a profile.
+        Lower stddev = more stable; higher = more volatile.
         """
-        
+        import numpy as np
+        if not score_history or len(score_history) < 2:
+            return 0.0
+        scores = [entry['score'] for entry in score_history]
+        return round(np.std(scores), 2)
+
+    def calculate_full_score(self, credit_profile: Union[Dict, Any], db=None, profile_id=None) -> Dict[str, Any]:
+        """
+        Calculate complete FICO score using 4-layer architecture and ModelRegistry.
+        """
+        from .model_registry import ModelRegistry
         # Convert to dict if needed (support both ORM objects and dicts)
         profile_dict = self._to_dict(credit_profile)
-        
         # LAYER 1: Extract Features
         features = extract_features(profile_dict)
-        
         # LAYER 2: Determine Scorecard
         scorecard = determine_scorecard(profile_dict, features)
-        
         # LAYER 3: Calculate Subscores (0-100)
         subscores = self._calculate_subscores(credit_profile, features)
-        
-        # LAYER 4: Aggregate Score
-        # If a named model is requested (e.g., 'fico8'), attempt to use its
-        # aggregation routine. Otherwise fall back to default linear aggregator.
-        final_score = None
-        if self.model_name and self.model_name.lower() == 'fico8':
+        # LAYER 4: Model Registry selection
+        model, model_version = ModelRegistry.get(self.model_name)
+        final_score = model.score(features)
+        # LAYER 5: Calibration Engine (automatic correction)
+        calibrated_score = final_score
+        if db and profile_id:
             try:
-                from .models import fico8 as fico8_model
-
-                final_score = fico8_model.aggregate_score(subscores, scorecard)
+                from .calibration_engine import CalibrationEngine
+                calibration_engine = CalibrationEngine(db)
+                calibrated_score = calibration_engine.apply_calibration(profile_id, final_score, self.model_name)
             except Exception:
-                # If model import or execution fails, fall back to default
-                final_score = aggregate_score(subscores, scorecard)
-        else:
-            final_score = aggregate_score(subscores, scorecard)
-        
+                calibrated_score = final_score
         return {
-            'score': final_score,
+            'score': calibrated_score,
+            'raw_score': final_score,
             'payment_history': int(round(subscores.get('payment_history', 50))),
             'utilization': int(round(subscores.get('utilization', 50))),
             'age': int(round(subscores.get('age', 50))),
@@ -129,9 +128,9 @@ class FicoEngine:
             'scorecard_description': get_scorecard_description(scorecard),
         }
     
-    def calculate_score(self, credit_profile: Union[Dict, Any]) -> int:
-        """Get just the final FICO score."""
-        return self.calculate_full_score(credit_profile)['score']
+    def calculate_score(self, credit_profile: Union[Dict, Any], db=None, profile_id=None) -> int:
+        """Get just the final FICO score (calibrated)."""
+        return self.calculate_full_score(credit_profile, db=db, profile_id=profile_id)['score']
     
     def _calculate_subscores(
         self,

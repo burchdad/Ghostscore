@@ -25,7 +25,7 @@ export default function AddAccountForm({ onClose }: AddAccountFormProps) {
     e.preventDefault()
 
     if (!currentProfileId) {
-      toast.error('Please select a profile first')
+      toast.error('Please create and select a profile first')
       return
     }
 
@@ -181,9 +181,10 @@ export default function AddAccountForm({ onClose }: AddAccountFormProps) {
           <button
             type="submit"
             disabled={loading || !currentProfileId}
-            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded font-semibold transition"
+            title={!currentProfileId ? 'Create and select a profile first' : ''}
+            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white rounded font-semibold transition"
           >
-            {loading ? 'Adding...' : 'Add Account'}
+            {!currentProfileId ? 'Create a profile first' : loading ? 'Adding...' : 'Add Account'}
           </button>
           <button
             type="button"

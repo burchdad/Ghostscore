@@ -164,14 +164,26 @@ def _estimate_action_timeline(
     - Week 16: 100% of gains (full effect)
     """
     
+    # Integrate TimelineEngine for realistic score projection
+    from .timeline_engine import TimelineEngine, TimelineEvent
+    timeline_engine = TimelineEngine()
+    timeline_events = []
+    for action in applied_actions:
+        action_type = action.get('type')
+        score_delta = action.get('estimated_gain', 0)
+        delay, ramp = timeline_engine.ACTION_DELAYS.get(action_type, (2, 6))
+        timeline_events.append(
+            TimelineEvent(
+                action_type=action_type,
+                score_delta=score_delta,
+                delay_weeks=delay,
+                ramp_weeks=ramp
+            )
+        )
+    timeline_scores = timeline_engine.build_timeline(original_score, timeline_events, total_weeks=16)
     timeline = [
-        {'week': 0, 'score': original_score, 'milestone': 'Current'},
-        {'week': 2, 'score': int(original_score + actual_gain * 0.15), 'milestone': 'Bureaus notified'},
-        {'week': 4, 'score': int(original_score + actual_gain * 0.40), 'milestone': 'Changes reflected'},
-        {'week': 8, 'score': int(original_score + actual_gain * 0.70), 'milestone': 'Major improvement'},
-        {'week': 16, 'score': int(original_score + actual_gain), 'milestone': 'Full effect'},
+        {'week': i, 'score': score, 'milestone': 'Projected'} for i, score in enumerate(timeline_scores)
     ]
-    
     return timeline
 
 

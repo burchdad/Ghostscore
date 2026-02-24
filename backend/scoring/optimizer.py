@@ -39,7 +39,8 @@ def find_best_actions(
     recommendations = []
     accounts = profile.get("accounts", [])
 
-    # === PAYDOWN RECOMMENDATIONS ===
+    # === PAYDOWN RECOMMENDATIONS WITH UTILIZATION BINS ===
+    utilization_bins = [0.88, 0.68, 0.48, 0.28, 0.08, 0.01]
     for account_idx, account in enumerate(accounts):
         account_type = account.get("account_type", account.get("type", "other"))
         if account_type != "credit_card":
@@ -49,40 +50,42 @@ def find_best_actions(
         limit = float(credit_limit) if credit_limit else 1
         if limit == 0:
             continue
-        target_balance = limit * 0.09
-        if balance <= target_balance:
-            continue
-        paydown_amount = balance - target_balance
-        simulated = deepcopy(profile)
-        account_id = account.get("id")
-        matched = False
-        if account_id:
-            for sim_acc in simulated.get("accounts", []):
-                if sim_acc.get("id") == account_id:
-                    sim_acc["balance"] = target_balance
-                    matched = True
-                    break
-        if not matched:
-            if account_idx < len(simulated.get("accounts", [])):
-                simulated["accounts"][account_idx]["balance"] = target_balance
-        try:
-            new_score = calculate_score_func(simulated)
-            gain = new_score - original_score
-        except Exception:
-            gain = 0
-        if gain > 0:
-            recommendations.append({
-                "type": "paydown",
-                "priority": "high" if gain > 30 else "medium" if gain > 15 else "low",
-                "account_id": account_id,
-                "account_name": account.get("issuer", account.get("name", "Unknown Account")),
-                "account_type": account_type,
-                "current_balance": balance,
-                "target_balance": target_balance,
-                "paydown_amount": paydown_amount,
-                "estimated_gain": gain,
-                "description": f"Pay down {account.get('issuer', 'account')} balance to ${target_balance:.0f}",
-            })
+        for bin_pct in utilization_bins:
+            target_balance = round(limit * bin_pct, 2)
+            if balance <= target_balance:
+                continue
+            paydown_amount = balance - target_balance
+            simulated = deepcopy(profile)
+            account_id = account.get("id")
+            matched = False
+            if account_id:
+                for sim_acc in simulated.get("accounts", []):
+                    if sim_acc.get("id") == account_id:
+                        sim_acc["balance"] = target_balance
+                        matched = True
+                        break
+            if not matched:
+                if account_idx < len(simulated.get("accounts", [])):
+                    simulated["accounts"][account_idx]["balance"] = target_balance
+            try:
+                new_score = calculate_score_func(simulated)
+                gain = new_score - original_score
+            except Exception:
+                gain = 0
+            if gain > 0:
+                recommendations.append({
+                    "type": "paydown",
+                    "priority": "high" if gain > 30 else "medium" if gain > 15 else "low",
+                    "account_id": account_id,
+                    "account_name": account.get("issuer", account.get("name", "Unknown Account")),
+                    "account_type": account_type,
+                    "current_balance": balance,
+                    "target_balance": target_balance,
+                    "paydown_amount": paydown_amount,
+                    "utilization_bin": bin_pct,
+                    "estimated_gain": gain,
+                    "description": f"Pay down {account.get('issuer', 'account')} to {int(bin_pct*100)}% utilization (${target_balance:.0f})",
+                })
 
     # === CLOSE/PAY OFF RECOMMENDATIONS ===
     for account_idx, account in enumerate(accounts):
@@ -198,45 +201,27 @@ def estimate_score_improvement_timeline(
             {"week": 52, "score": current_score, "milestone": "No improvements planned"},
         ]
     
-    # Calculate total potential gain
-    total_gain = sum(r.get("estimated_gain", 0) for r in recommendations)
-    
-    if total_gain <= 0:
-        return [
-            {"week": 0, "score": current_score, "milestone": "Current score"},
-        ]
-    
-    # Distribute gains over time (assume 2-3 month full effect, ramping up)
-    # Week 0: current
-    # Week 2: 10% of gains (reporting lag)
-    # Week 4: 30% of gains
-    # Week 8: 60% of gains
-    # Week 16: 100% of gains (3-4 months)
-    
+    # Integrate TimelineEngine for realistic score projection
+    from .timeline_engine import TimelineEngine, TimelineEvent
+    timeline_engine = TimelineEngine()
+    timeline_events = []
+    for rec in recommendations:
+        action_type = rec.get("type")
+        score_delta = rec.get("estimated_gain", 0)
+        # Use realistic delays/ramp from TimelineEngine.ACTION_DELAYS
+        delay, ramp = timeline_engine.ACTION_DELAYS.get(action_type, (2, 6))
+        timeline_events.append(
+            TimelineEvent(
+                action_type=action_type,
+                score_delta=score_delta,
+                delay_weeks=delay,
+                ramp_weeks=ramp
+            )
+        )
+    timeline_scores = timeline_engine.build_timeline(current_score, timeline_events, total_weeks=16)
     timeline = [
-        {"week": 0, "score": current_score, "milestone": "Current score"},
-        {
-            "week": 2,
-            "score": int(current_score + total_gain * 0.10),
-            "milestone": "Early gains from credit mix changes"
-        },
-        {
-            "week": 4,
-            "score": int(current_score + total_gain * 0.30),
-            "milestone": "First paydowns reflected"
-        },
-        {
-            "week": 8,
-            "score": int(current_score + total_gain * 0.60),
-            "milestone": "Major improvements showing"
-        },
-        {
-            "week": 16,
-            "score": int(current_score + total_gain),
-            "milestone": "Full effect of all recommendations"
-        },
+        {"week": i, "score": score, "milestone": "Projected"} for i, score in enumerate(timeline_scores)
     ]
-    
     return timeline
 
 

@@ -5,6 +5,8 @@ import Dashboard from '@/components/Dashboard'
 import AddAccountForm from '@/components/AddAccountForm'
 import ProfileSelector from '@/components/ProfileSelector'
 import CreditReportUpload from '@/components/CreditReportUpload'
+import PlaidAccountLink from '@/components/PlaidAccountLink'
+import AccountsManager from '@/components/AccountsManager'
 import { useStore } from '@/lib/store'
 import { apiClient } from '@/lib/api'
 import toast, { Toaster } from 'react-hot-toast'
@@ -13,15 +15,24 @@ export default function Home() {
   const { profile, userEmail, setUserEmail, setAvailableProfiles, currentProfileId, setProfile, setLoading } = useStore()
   const [showAddForm, setShowAddForm] = useState(false)
   const [showUploadReport, setShowUploadReport] = useState(false)
+  const [showPlaidLink, setShowPlaidLink] = useState(false)
+  const [addAccountMethod, setAddAccountMethod] = useState<'bank' | 'manual' | null>(null)
+  const [showAccountMethodMenu, setShowAccountMethodMenu] = useState(false)
   const [familyEmail, setFamilyEmail] = useState('family@ghostscore.local')
   const [initialized, setInitialized] = useState(false)
-
-  // Load profiles on startup
+  const [debugInfo, setDebugInfo] = useState<string>('init')
+  const [loadAttempted, setLoadAttempted] = useState(false)
+  
   useEffect(() => {
-    if (!initialized) {
+    setDebugInfo('effect1: mount')
+    if (!loadAttempted) {
+      setDebugInfo('effect1: starting load')
+      setLoadAttempted(true)
+      // Start the load
+      console.log('Starting initial load...')
       loadProfiles()
     }
-  }, [initialized])
+  }, [])
 
   // Load full profile when currentProfileId changes
   useEffect(() => {
@@ -32,20 +43,33 @@ export default function Home() {
 
   const loadProfiles = async () => {
     try {
+      console.log('loadProfiles called with familyEmail:', familyEmail)
+      setDebugInfo('loading...')
       setLoading(true)
+      console.log('About to fetch from:', `${process.env.NEXT_PUBLIC_API_URL}/profiles/${encodeURIComponent(familyEmail)}`)
       const profiles = await apiClient.getProfiles(familyEmail)
+      console.log('loadProfiles succeeded, profiles count:', profiles.length, 'profiles:', profiles)
+      setDebugInfo('loaded: ' + profiles.length + ' profiles')
       setUserEmail(familyEmail)
       setAvailableProfiles(profiles)
       
       if (profiles.length > 0) {
+        console.log('Setting currentProfileId to', profiles[0].id)
         useStore.setState({ currentProfileId: profiles[0].id })
       }
       
+      console.log('About to call setInitialized(true)')
       setInitialized(true)
+      console.log('Called setInitialized(true)')
+      setDebugInfo('initialized!')
+      setLoading(false)
       toast.success(`Loaded ${profiles.length} profiles`)
     } catch (err) {
+      console.error('loadProfiles error:', err)
+      setDebugInfo('error: ' + (err instanceof Error ? err.message : 'unknown'))
       toast.error('Failed to load profiles')
       setInitialized(true)
+      setLoading(false)
     }
   }
 
@@ -66,7 +90,7 @@ export default function Home() {
       toast.error('Email required')
       return
     }
-    setInitialized(false)
+    await loadProfiles()
   }
 
   if (!initialized) {
@@ -82,6 +106,7 @@ export default function Home() {
           <div className="max-w-md mx-auto mt-20">
             <div className="bg-slate-700 rounded-lg p-8">
               <h2 className="text-2xl font-bold text-white mb-6">Welcome to the Family</h2>
+              <div className="text-xs text-slate-400 mb-4 p-2 bg-slate-600 rounded">Debug: {debugInfo}</div>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -130,12 +155,36 @@ export default function Home() {
               >
                 {showUploadReport ? 'Close' : '📄 Upload Report'}
               </button>
-              <button
-                onClick={() => setShowAddForm(!showAddForm)}
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition"
-              >
-                {showAddForm ? 'Close' : '+ Add Account'}
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowAccountMethodMenu(!showAccountMethodMenu)}
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition"
+                >
+                  {showAccountMethodMenu ? '✕ Close' : '+ Add Account'}
+                </button>
+                {showAccountMethodMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-slate-700 border border-slate-600 rounded-lg shadow-xl z-50">
+                    <button
+                      onClick={() => {
+                        setShowPlaidLink(true)
+                        setShowAccountMethodMenu(false)
+                      }}
+                      className="block w-full text-left px-4 py-3 text-white hover:bg-slate-600 rounded-t-lg transition"
+                    >
+                      🏦 Link Bank Account
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowAddForm(true)
+                        setShowAccountMethodMenu(false)
+                      }}
+                      className="block w-full text-left px-4 py-3 text-white hover:bg-slate-600 rounded-b-lg transition border-t border-slate-600"
+                    >
+                      ✏️ Add Manually
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -150,22 +199,42 @@ export default function Home() {
           </div>
         )}
 
+        {/* Plaid Account Link */}
+        {showPlaidLink && (
+          <div className="mb-8">
+            <PlaidAccountLink onClose={() => {
+              setShowPlaidLink(false)
+              setShowAccountMethodMenu(false)
+            }} />
+          </div>
+        )}
+
         {/* Add Account Form */}
         {showAddForm && (
           <div className="mb-8">
-            <AddAccountForm onClose={() => setShowAddForm(false)} />
+            <AddAccountForm onClose={() => {
+              setShowAddForm(false)
+              setShowAccountMethodMenu(false)
+            }} />
           </div>
         )}
 
         {/* Dashboard */}
         {profile.accounts.length > 0 ? (
-          <Dashboard />
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div className="lg:col-span-3">
+              <Dashboard />
+            </div>
+            <div className="lg:col-span-1">
+              <AccountsManager profile={profile} onAccountsDeleted={() => loadFullProfile(profile.id)} />
+            </div>
+          </div>
         ) : (
           <div className="text-center py-20">
             <p className="text-xl text-slate-400 mb-8">
               Start by adding credit accounts to this profile
             </p>
-            <div className="flex gap-4 justify-center">
+            <div className="flex gap-4 justify-center flex-wrap">
               <button
                 onClick={() => setShowUploadReport(true)}
                 className="px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition"
@@ -173,10 +242,22 @@ export default function Home() {
                 📄 Upload Credit Report
               </button>
               <button
-                onClick={() => setShowAddForm(true)}
+                onClick={() => {
+                  setAddAccountMethod('bank')
+                  setShowPlaidLink(true)
+                }}
+                className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition"
+              >
+                🏦 Link Bank Account
+              </button>
+              <button
+                onClick={() => {
+                  setAddAccountMethod('manual')
+                  setShowAddForm(true)
+                }}
                 className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition"
               >
-                ➕ Add Manually
+                ✏️ Add Manually
               </button>
             </div>
           </div>

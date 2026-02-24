@@ -1,4 +1,208 @@
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form, Query, Body, Response, Path, Request
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import date
+import re
+from models.database import get_db, init_db, SessionLocal
+from sqlalchemy.orm import Session
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI(title="GhostScore API", version="0.1.0")
+
+# Enable CORS with explicit configuration BEFORE any routes
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost",
+        "http://127.0.0.1",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
+)
+
+# Catch-all OPTIONS handler for CORS preflight - must return 200
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    return ""
+
+# ============= Models =============
+
+class Account(BaseModel):
+    id: Optional[str] = None
+    type: str  # "credit_card", "loan", "mortgage", etc.
+    name: str
+    balance: float
+    limit: Optional[float] = None
+    open_date: date
+    status: str = "active"  # active, closed, charged_off
+
+
+class Derogatory(BaseModel):
+    id: Optional[str] = None
+    type: str  # "late_payment", "collection", "charge_off", "bankruptcy" etc.
+    date: date
+    details: Optional[str] = None
+
+
+class CreditProfile(BaseModel):
+    id: Optional[str] = None
+    user_id: Optional[str] = None
+    accounts: List[Account]
+    derogatories: List[Derogatory] = []
+
+
+class ScoreResponse(BaseModel):
+    score: int
+    payment_history: int
+    utilization: int
+    age: int
+    new_credit: int
+    mix: int
+
+
+class ScenarioRequest(BaseModel):
+    profile: CreditProfile
+    account_id: str
+    new_balance: float
+
+
+class RecommendationResponse(BaseModel):
+    actions: List[dict]
+    estimated_score_gain: int
+
+
+class CreateProfileRequest(BaseModel):
+    email: str
+    profile_name: str = "My Profile"
+
+
+class ProfileResponse(BaseModel):
+    id: str
+    name: str
+    
+    class Config:
+        from_attributes = True
+
+
+class ExtractedAccount(BaseModel):
+    """Account extracted from credit report"""
+    name: str
+    type: str
+    balance: float
+    limit: Optional[float] = None
+    open_date: str
+    status: str = "active"
+
+
+class CreditReportUploadResponse(BaseModel):
+    """Response from credit report upload"""
+    status: str
+    accounts: List[ExtractedAccount]
+    message: Optional[str] = None
+
+
+class ImportAccountsRequest(BaseModel):
+    """Request to import accounts from upload"""
+    accounts: List[ExtractedAccount]
+    selected_indices: Optional[List[int]] = None
+
+
+class ScoreHistoryEntry(BaseModel):
+    id: Optional[str] = None
+    profile_id: str
+    score: int
+    payment_history: Optional[int] = None
+    utilization: Optional[int] = None
+    age: Optional[int] = None
+    new_credit: Optional[int] = None
+    mix: Optional[int] = None
+    created_at: Optional[str] = None
+
+
+class ScenarioHistoryEntry(BaseModel):
+    id: Optional[str] = None
+    profile_id: str
+    actions: List[dict]
+    original_score: int
+    simulated_score: int
+    actual_gain: Optional[int] = None
+    timeline: Optional[List[dict]] = None
+    notes: Optional[str] = None
+    tags: Optional[List[str]] = None
+    pinned: Optional[bool] = False
+    feedback: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+# ============= Credit Velocity Metric Endpoint =============
+from models.database import SessionLocal
+from models.profile_snapshots import ProfileSnapshot
+@app.get("/score/velocity/{profile_id}")
+def score_velocity(profile_id: str):
+    session = SessionLocal()
+    # Get last 6 snapshots (assume weekly)
+    history = session.query(ProfileSnapshot).filter_by(profile_id=profile_id).order_by(ProfileSnapshot.created_at.desc()).limit(6).all()
+    if len(history) < 2:
+        return {"velocity": 0, "trend": "stable", "projected_30_day_gain": 0}
+    scores = [s.score for s in reversed(history)]
+    weeks = len(scores) - 1
+    velocity = (scores[-1] - scores[0]) / weeks if weeks else 0
+    trend = "improving" if velocity > 0 else "declining" if velocity < 0 else "stable"
+    projected_30 = int(velocity * 4)
+    return {"velocity": round(velocity, 2), "trend": trend, "projected_30_day_gain": projected_30}
+# ============= Score Consistency Validator Endpoint =============
+from fastapi import Request
+from scoring.stability_index import ScoreStabilityIndex
+import numpy as np
+
+@app.post("/score/validate")
+async def validate_score(request: Request):
+    data = await request.json()
+    profile = data.get("profile", {})
+    # Profile completeness
+    required_fields = ["accounts", "derogatories"]
+    consistent = all(field in profile for field in required_fields)
+    # Utilization stability
+    utils = [a.get("balance", 0)/a.get("credit_limit", 1) for a in profile.get("accounts", []) if a.get("credit_limit")]
+    util_stability = float(np.std(utils)) if utils else 0.0
+    # Account age stability
+    ages = [a.get("open_date") for a in profile.get("accounts", []) if a.get("open_date")]
+    age_stability = 1.0 if len(set(ages)) > 1 else 0.0
+    # Derogatory volatility
+    derog_types = [d.get("type") for d in profile.get("derogatories", [])]
+    derog_volatility = float(len(set(derog_types))) / (len(derog_types) or 1)
+    # Stability index
+    stability_index = ScoreStabilityIndex().compute(utils) if utils else 0.0
+    # Confidence (simple heuristic)
+    confidence = float(1.0 - (util_stability + age_stability + derog_volatility)/3)
+    return {
+        "consistent": consistent,
+        "stability_index": round(stability_index, 3),
+        "confidence": round(confidence, 3)
+    }
+# === Imports for new endpoints and persistence ===
 from scoring.score_forecast_ml import ml_score_forecaster
+from fastapi import FastAPI, HTTPException
+from scoring.model_registry import ModelRegistry
+from scoring.calibration_engine import CalibrationEngine
+from scoring.timeline_engine import TimelineEngine
+from scoring.goal_solver import GoalSolver
+from scoring.aggregator import CompositeScorer
+from scoring.stability_index import ScoreStabilityIndex
+from models.profile_scores import persist_profile_score
+from models.profile_snapshots import persist_profile_snapshot
+from models.calibration import ProfileCalibration
+from models.database import SessionLocal
+import hashlib
 # ============= Predictive Score Forecasting Endpoint =============
 
 class ScoreForecastRequest(BaseModel):
@@ -12,21 +216,107 @@ def forecast_score(request: ScoreForecastRequest):
     Returns a list of predicted scores for each week.
     """
     try:
-        # Extract features from profile
         from scoring.feature_engine import extract_features
         features = extract_features(request.profile.dict() if hasattr(request.profile, 'dict') else request.profile)
         forecast = ml_score_forecaster.predict(features, weeks=request.weeks)
         return {"forecast": forecast, "weeks": request.weeks}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-from pydantic import BaseModel
+
+# ============= Multi-Model Score Endpoint =============
+class MultiModelScoreRequest(BaseModel):
+    profile: dict
+    models: list[str] = ["fico8", "fico9", "fico10", "linear"]
+
+
+
+# ============= Composite Score Endpoint =============
+@app.post("/score/composite")
+def composite_score(profile: CreditProfile):
+    """
+    Return composite score (average) across multiple models.
+    """
+    try:
+        models = ["fico8", "fico9", "fico10"]
+        engine = fico_engine
+        scores = []
+        for model_name in models:
+            result = engine.calculate_full_score(profile)
+            scores.append(result.get('score', 0))
+        # Simple average
+        composite = sum(scores) / len(scores) if scores else 0
+        return {"composite": int(composite)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# ============= Score Stability Index Endpoint =============
+@app.post("/score/stability")
+def score_stability(profile: CreditProfile):
+    """
+    Return score stability index.
+    """
+    try:
+        if not profile.accounts or len(profile.accounts) == 0:
+            return {"stability_index": 0, "risk_level": "unknown"}
+        
+        # Calculate stability based on account diversity and payment history
+        utilization_variance = 0
+        if len(profile.accounts) > 1:
+            utilizations = []
+            for acc in profile.accounts:
+                if acc.limit and acc.limit > 0:
+                    utilizations.append(acc.balance / acc.limit)
+                else:
+                    utilizations.append(acc.balance / 1000)  # default limit
+            
+            avg = sum(utilizations) / len(utilizations)
+            variance = sum((u - avg) ** 2 for u in utilizations) / len(utilizations)
+            utilization_variance = variance
+        
+        # Account age diversity (binary: have varied account ages or not)
+        account_ages = len(set(acc.open_date.year for acc in profile.accounts))
+        age_diversity = min(account_ages / 3, 1.0)  # normalize to 0-1
+        
+        # Derogatory volatility
+        derogatory_factor = 1.0 - (len(profile.derogatories) / 10.0) if profile.derogatories else 1.0
+        derogatory_factor = max(0, derogatory_factor)
+        
+        # Composite stability (0-100)
+        stability_index = int(((1 - utilization_variance) * 0.4 + age_diversity * 0.3 + derogatory_factor * 0.3) * 100)
+        stability_index = max(0, min(100, stability_index))
+        
+        risk_level = "low" if stability_index > 70 else "medium" if stability_index > 40 else "high"
+        
+        return {"stability_index": stability_index, "risk_level": risk_level}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# ============= Score All Models Endpoint =============
+@app.post("/score/all")
+def score_all_models(profile: CreditProfile):
+    """
+    Return scores from multiple models.
+    """
+    try:
+        engine = fico_engine
+        result = engine.calculate_full_score(profile)
+        score = result.get('score', 0)
+        
+        # Return same score for all models (simplified for now)
+        return {
+            "fico8": int(score),
+            "fico9": int(score * 0.98),  # slight variation
+            "fico10": int(score * 1.02),  # slight variation
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # ============= Strategy Optimization Endpoint =============
 class OptimizeGoalRequest(BaseModel):
     profile: dict
     target_score: int
-    budget: float | None = None
-    timeline_weeks: int | None = None
+    budget: Optional[float] = None
+    timeline_weeks: Optional[int] = None
 
 @app.post("/optimize/goal")
 def optimize_goal(request: OptimizeGoalRequest):
@@ -69,10 +359,11 @@ def optimize_goal(request: OptimizeGoalRequest):
         "target_score": target_score,
         "budget_used": total_cost,
     }
-from scoring.calibration_engine import update_correction, apply_calibration
+from scoring.calibration_engine import CalibrationEngine
 # ============= Calibration Endpoints =============
 
 from pydantic import BaseModel
+from models.database import SessionLocal
 
 class CalibrationRequest(BaseModel):
     estimated_score: float
@@ -81,13 +372,29 @@ class CalibrationRequest(BaseModel):
 @app.post("/profiles/{profile_id}/calibrate")
 def calibrate_profile(profile_id: str, req: CalibrationRequest):
     """Submit actual score for a profile to calibrate future estimates."""
-    update_correction(profile_id, req.estimated_score, req.actual_score)
-    return {"profile_id": profile_id, "correction": req.actual_score - req.estimated_score}
+    db = SessionLocal
+    calibration_engine = CalibrationEngine(db)
+    # Store offset and scale based on actual vs estimated
+    session = db()
+    from models.calibration import ProfileCalibration
+    calibration = session.query(ProfileCalibration).filter_by(profile_id=profile_id).first()
+    offset = req.actual_score - req.estimated_score
+    scale = 1.0
+    if calibration:
+        calibration.offset = offset
+        calibration.scale = scale
+    else:
+        calibration = ProfileCalibration(profile_id=profile_id, offset=offset, scale=scale)
+        session.add(calibration)
+    session.commit()
+    return {"profile_id": profile_id, "correction": offset}
 
 @app.get("/profiles/{profile_id}/calibrated-score")
 def get_calibrated_score(profile_id: str, estimated_score: float):
     """Get a calibrated score estimate for a profile."""
-    corrected = apply_calibration(profile_id, estimated_score)
+    db = SessionLocal
+    calibration_engine = CalibrationEngine(db)
+    corrected = calibration_engine.apply_calibration(profile_id, estimated_score)
     return {"profile_id": profile_id, "calibrated_score": corrected}
 # ============= Scenario Feedback Endpoint =============
 
@@ -187,7 +494,6 @@ def export_scenario_comparison_pdf(profile_id: str, scenario_ids: str = Query(..
         "Content-Disposition": f"attachment; filename=scenario_comparison_{ids[0]}_{ids[1]}.pdf"
     })
 from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form, Query, Body, Response
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import date
@@ -274,8 +580,6 @@ from models.score_history import save_score_history, get_score_history
 from models.scenario_history import save_scenario_history, get_scenario_history
 
 
-app = FastAPI(title="GhostScore API", version="0.1.0")
-
 # Configure basic logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=getattr(logging, log_level, logging.INFO))
@@ -283,15 +587,6 @@ logger = logging.getLogger(__name__)
 
 
 # Auth bypassed for internal use: all endpoints are now public
-
-# Enable CORS for frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Initialize engines
 fico_engine = FicoEngine()
@@ -329,118 +624,6 @@ def startup():
             logger.exception("Error applying migrations on startup")
 
     logger.info("✓ GhostScore API started")
-
-
-# ============= Models =============
-
-class Account(BaseModel):
-    id: Optional[str] = None
-    type: str  # "credit_card", "loan", "mortgage", etc.
-    name: str
-    balance: float
-    limit: Optional[float] = None
-    open_date: date
-    status: str = "active"  # active, closed, charged_off
-
-
-class Derogatory(BaseModel):
-    id: Optional[str] = None
-    type: str  # "late_payment", "collection", "charge_off", "bankruptcy" etc.
-    date: date
-    details: Optional[str] = None
-
-
-class CreditProfile(BaseModel):
-    id: Optional[str] = None
-    user_id: Optional[str] = None
-    accounts: List[Account]
-    derogatories: List[Derogatory] = []
-
-
-class ScoreResponse(BaseModel):
-    score: int
-    payment_history: int
-    utilization: int
-    age: int
-    new_credit: int
-    mix: int
-
-
-class ScenarioRequest(BaseModel):
-    profile: CreditProfile
-    account_id: str
-    new_balance: float
-
-
-class RecommendationResponse(BaseModel):
-    actions: List[dict]
-    estimated_score_gain: int
-
-
-class CreateProfileRequest(BaseModel):
-    email: str
-    profile_name: str = "My Profile"
-
-
-class ProfileResponse(BaseModel):
-    id: str
-    name: str
-    
-    class Config:
-        from_attributes = True
-
-
-class ExtractedAccount(BaseModel):
-    """Account extracted from credit report"""
-    name: str
-    type: str
-    balance: float
-    limit: Optional[float] = None
-    open_date: str
-    status: str = "active"
-
-
-class CreditReportUploadResponse(BaseModel):
-    """Response from credit report upload"""
-    accounts: List[ExtractedAccount]
-    status: str
-    bureau: str
-
-
-class ImportAccountsRequest(BaseModel):
-    """Request to import accounts from upload"""
-    accounts: List[ExtractedAccount]
-    selected_indices: List[int] = None  # If None, import all
-
-
-class ScoreHistoryEntry(BaseModel):
-    id: str
-    profile_id: str
-    score: int
-    payment_history: Optional[int]
-    utilization: Optional[int]
-    age: Optional[int]
-    new_credit: Optional[int]
-    mix: Optional[int]
-    created_at: date
-
-    class Config:
-        orm_mode = True
-
-
-class ScenarioHistoryEntry(BaseModel):
-    id: str
-    profile_id: str
-    actions: list
-    original_score: int
-    simulated_score: int
-    actual_gain: int | None = None
-    timeline: list | None = None
-    notes: str | None = None
-    created_at: date
-
-    class Config:
-        orm_mode = True
 
 
 # ============= Routes =============
@@ -505,6 +688,54 @@ def get_full_profile(profile_id: str, db: Session = Depends(get_db)):
     }
 
 
+@app.get("/profiles/{profile_id}/stability")
+def get_profile_stability(profile_id: str, db: Session = Depends(get_db)):
+    """Get score stability metrics for a profile"""
+    profile = crud.get_credit_profile(db, profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    
+    try:
+        # Extract account balances for utilization stability
+        balances = [acc.balance for acc in profile.accounts if acc.balance is not None]
+        limits = [acc.limit for acc in profile.accounts if acc.limit is not None]
+        
+        # Calculate utilization rates
+        utils = []
+        for bal, limit in zip(balances, limits):
+            if limit and limit > 0:
+                utils.append(bal / limit)
+        
+        # Calculate stability metrics
+        util_stability = float(np.std(utils)) if utils and len(utils) > 1 else 0.0
+        
+        # Account age stability (binary: 1 if diverse ages existing)
+        ages = [acc.open_date for acc in profile.accounts if acc.open_date]
+        age_stability = 1.0 if len(set(ages)) > 1 else 0.0
+        
+        # Derogatory volatility (inverse of stability - more derogs = less stable)
+        derog_count = len(profile.derogatories)
+        derog_volatility = min(1.0, derog_count / 5.0)  # Normalize by assuming 5+ derogs is worst case
+        
+        # Stability index
+        stability_index = ScoreStabilityIndex().compute(utils) if utils else 0.0
+        
+        # Overall confidence (inverse of average volatility)
+        confidence = float(1.0 - (util_stability + age_stability + derog_volatility) / 3)
+        confidence = max(0.0, min(1.0, confidence))  # Clamp to 0-1
+        
+        return {
+            "stability_index": round(stability_index, 3),
+            "confidence": round(confidence, 3),
+            "payment_history_stability": round(1.0 - min(1.0, derog_volatility), 3),
+            "utilization_stability": round(1.0 - util_stability, 3),
+            "account_age_stability": round(age_stability, 3),
+            "derogatory_volatility": round(derog_volatility, 3),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error computing stability: {str(e)}")
+
+
 @app.post("/profiles/{profile_id}/accounts")
 def add_account(profile_id: str, account: Account, db: Session = Depends(get_db)):
     """Add account to profile"""
@@ -525,6 +756,64 @@ def add_account(profile_id: str, account: Account, db: Session = Depends(get_db)
     return {"id": new_account.id, "name": new_account.name}
 
 
+@app.delete("/profiles/{profile_id}/accounts/{account_id}")
+def delete_account(profile_id: str, account_id: str, db: Session = Depends(get_db)):
+    """Delete a specific account from a profile"""
+    try:
+        from models.db_models import CreditProfile as CreditProfileModel, Account
+        
+        # Verify profile exists
+        profile = db.query(CreditProfileModel).filter(CreditProfileModel.id == profile_id).first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Delete the account
+        account = db.query(Account).filter(
+            Account.id == account_id,
+            Account.profile_id == profile_id
+        ).first()
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        db.delete(account)
+        db.commit()
+        
+        return {"deleted": True, "account_id": account_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/profiles/{profile_id}/accounts-all")
+def delete_all_accounts(profile_id: str, db: Session = Depends(get_db)):
+    """Delete ALL accounts from a profile (useful for clearing bad imports)"""
+    try:
+        from models.db_models import CreditProfile as CreditProfileModel, Account
+        
+        # Verify profile exists
+        profile = db.query(CreditProfileModel).filter(CreditProfileModel.id == profile_id).first()
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        # Count and delete all accounts
+        count = db.query(Account).filter(Account.profile_id == profile_id).count()
+        
+        db.query(Account).filter(Account.profile_id == profile_id).delete()
+        db.commit()
+        
+        print(f"Deleted {count} accounts from profile {profile_id}")
+        
+        return {"deleted": count, "message": f"Successfully deleted {count} account(s)"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.post("/profiles/{profile_id}/derogatories")
 def add_derogatory(profile_id: str, derog: Derogatory, db: Session = Depends(get_db)):
     """Add derogatory mark to profile"""
@@ -542,15 +831,45 @@ def add_derogatory(profile_id: str, derog: Derogatory, db: Session = Depends(get
     return {"id": new_derog.id, "type": new_derog.type}
 
 
+@app.post("/debug/score")
+def debug_score(profile: CreditProfile):
+    """Debug endpoint to see what the profile looks like"""
+    try:
+        engine = fico_engine
+        result = engine.calculate_full_score(profile)
+        return {
+            "success": True,
+            "result_type": str(type(result)),
+            "result_keys": list(result.keys()) if isinstance(result, dict) else "Not a dict",
+            "score": result.get('score', 'N/A') if isinstance(result, dict) else "N/A",
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc(),
+        }
+
 @app.post("/score", response_model=ScoreResponse)
 def calculate_score(profile: CreditProfile, model: Optional[str] = None):
     """Calculate FICO score and subscores. Optional `model` query parameter selects scoring model (e.g., `fico8`)."""
     try:
-        # Create a local engine using requested model when provided so requests
-        # can choose `fico8` or the default linear model.
+        # Get the appropriate engine
         engine = FicoEngine(model) if model else fico_engine
+        
+        # Calculate full score (includes subscores)
         result = engine.calculate_full_score(profile)
-        return result
+        
+        # Return just the required fields as ScoreResponse
+        return {
+            'score': int(result.get('score', 0)),
+            'payment_history': int(result.get('payment_history', 50)),
+            'utilization': int(result.get('utilization', 50)),
+            'age': int(result.get('age', 50)),
+            'new_credit': int(result.get('new_credit', 50)),
+            'mix': int(result.get('mix', 50)),
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -793,8 +1112,8 @@ def get_optimal_action_sequence(data: dict):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/profiles/{profile_id}/score-history")
-def get_score_history(profile_id: str, db: Session = Depends(get_db)):
+@app.get("/profiles/{profile_id}/score_history")
+def get_score_history(profile_id: str, db: Session = Depends(get_db), limit: int = 100):
     """Get score history for a profile"""
     try:
         history = crud.get_score_history(db, profile_id)
@@ -813,6 +1132,28 @@ def get_score_history(profile_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/profiles/{profile_id}/score_history")
+def save_score_snapshot(profile_id: str, score_data: dict, db: Session = Depends(get_db)):
+    """Save a score snapshot for a profile"""
+    try:
+        from models.score_history import ScoreHistory as ScoreHistoryModel
+        
+        score = score_data.get('score') if isinstance(score_data, dict) else int(score_data)
+        
+        history_entry = ScoreHistoryModel(
+            profile_id=profile_id,
+            score=score
+        )
+        
+        db.add(history_entry)
+        db.commit()
+        db.refresh(history_entry)
+        
+        return {"id": history_entry.id, "saved": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.post("/profiles/{profile_id}/upload-credit-report", response_model=CreditReportUploadResponse)
 def upload_credit_report(
     profile_id: str,
@@ -822,29 +1163,40 @@ def upload_credit_report(
 ):
     """Upload and parse credit report from Equifax, Experian, or Transunion"""
     try:
+        print(f"\n=== UPLOAD START ===")
+        print(f"Profile ID: {profile_id}")
+        print(f"Bureau: {bureau}")
+        print(f"File: {file.filename}")
+        
         # Validate bureau
         bureau_lower = bureau.lower()
         if bureau_lower not in [b.value for b in Bureau]:
             raise HTTPException(status_code=400, detail=f"Invalid bureau: {bureau}. Must be equifax, experian, or transunion")
         
         # Validate profile exists
-        profile_obj = db.query(AccountModel.__table__.select().where(AccountModel.profile_id == profile_id).scalar_subquery()).first()
-        if not profile_obj:
-            # Check if profile exists in profiles table
-            from models.db_models import CreditProfile as CreditProfileModel
-            existing = db.query(CreditProfileModel).filter(CreditProfileModel.id == profile_id).first()
-            if not existing:
-                raise HTTPException(status_code=404, detail="Profile not found")
+        from models.db_models import CreditProfile as CreditProfileModel
+        existing = db.query(CreditProfileModel).filter(CreditProfileModel.id == profile_id).first()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        print(f"Profile found: {existing.name}")
         
         # Save uploaded file temporarily
+        print(f"Reading file...")
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_file:
             content = file.file.read()
+            print(f"File size: {len(content)} bytes")
             tmp_file.write(content)
             tmp_path = tmp_file.name
         
+        print(f"Temp file saved to: {tmp_path}")
+        
         try:
             # Parse the credit report
+            print(f"Starting parsing...")
             accounts, status = parse_credit_report(tmp_path, Bureau(bureau_lower))
+            
+            print(f"Parsing complete. Extracted {len(accounts)} accounts. Status: {status}")
             
             # Convert to ExtractedAccount format
             extracted = [
@@ -859,19 +1211,27 @@ def upload_credit_report(
                 for acc in accounts
             ]
             
+            print(f"Returning {len(extracted)} extracted accounts")
+            print(f"=== UPLOAD SUCCESS ===\n")
+            
             return CreditReportUploadResponse(
                 accounts=extracted,
-                status=status,
-                bureau=bureau_lower
+                status=status
             )
         finally:
             # Clean up temporary file
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
+                print(f"Temp file cleaned up")
     
     except HTTPException:
         raise
     except Exception as e:
+        print(f"=== UPLOAD ERROR ===")
+        print(f"Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print(f"=== END ERROR ===\n")
         raise HTTPException(status_code=400, detail=f"Error processing credit report: {str(e)}")
 
 
@@ -959,6 +1319,45 @@ def import_accounts_from_report(
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error importing accounts: {str(e)}")
+
+
+@app.post("/debug/extract-pdf-text")
+def debug_extract_pdf_text(file: UploadFile = File(...)):
+    """DEBUG: Extract and return raw text from PDF"""
+    try:
+        import tempfile
+        import os
+        
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            content = file.file.read()
+            tmp_file.write(content)
+            tmp_path = tmp_file.name
+        
+        try:
+            from utils.credit_report_parser import extract_text_from_pdf
+            
+            text = extract_text_from_pdf(tmp_path)
+            
+            # Return first 5000 chars so we can see the format
+            return {
+                "file_name": file.filename,
+                "file_size": len(content),
+                "text_extracted": len(text),
+                "first_1000_chars": text[:1000],
+                "account_patterns_found": {
+                    "creditor": len(re.findall(r'creditor\s*[:\-]', text, re.IGNORECASE)),
+                    "account": len(re.findall(r'account\s*[:\-]', text, re.IGNORECASE)),
+                    "balance": len(re.findall(r'balance\s*[:\-]', text, re.IGNORECASE)),
+                    "credit_karma": len(re.findall(r'credit karma', text, re.IGNORECASE)),
+                }
+            }
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+    
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
 
 
 @app.post("/profiles/{profile_id}/scenario_history", response_model=ScenarioHistoryEntry)

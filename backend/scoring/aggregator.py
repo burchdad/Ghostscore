@@ -155,3 +155,31 @@ def estimate_score_range_improvement(
         "estimated_gain": improved_score - current_score,
         "factor": improvement_factor,
     }
+
+class CompositeScorer:
+    """
+    Combines multiple model scores into a single composite score.
+    
+    Composite = average of all model scores, capped to FICO range.
+    """
+    
+    def score(self, scores: list) -> float:
+        """
+        Calculate composite score from multiple model scores.
+        
+        Args:
+            scores: List of individual model scores (e.g., [750, 745, 755, 740])
+        
+        Returns:
+            Composite score (average, in range 300-850)
+        """
+        if not scores or len(scores) == 0:
+            return 500.0  # Default middle score if no scores provided
+        
+        # Calculate mean
+        composite = sum(scores) / len(scores)
+        
+        # Ensure it's in valid FICO range
+        composite = max(MIN_SCORE, min(MAX_SCORE, composite))
+        
+        return round(composite, 0)

@@ -477,6 +477,180 @@ class TransunionExtractor(AccountExtractor):
         return validated
 
 
+class CreditKarmaExtractor(AccountExtractor):
+    """Extract accounts from Credit Karma credit reports (universal format that works with any bureau)"""
+    
+    def extract_accounts(self) -> List[Dict]:
+        """
+        Extract accounts using heuristics that work with Credit Karma formatting.
+        Credit Karma shows accounts in a table-like format with consistent patterns.
+        """
+        accounts = []
+        lines = self.lines
+        
+        # Look for account name patterns
+        # Credit Karma typically has patterns like:
+        # - Bold/highlighted account names
+        # - Followed by account type (Card, Loan, etc)
+        # - Balance information  
+        # - Status information
+        
+        current_account = {}
+        
+        for i, line in enumerate(lines):
+            line_stripped = line.strip()
+            
+            # Skip empty lines and common headers
+            if not line_stripped or any(x in line_stripped.lower() for x in ['account', 'accounts', 'credit karma', 'report', '---', '===', 'page']):
+                continue
+            
+            # Look for account names (common patterns from credit reports)
+            # These usually don't have field labels
+            if self._looks_like_account_name(line_stripped):
+                if current_account and 'name' in current_account:
+                    accounts.append(current_account)
+                current_account = {'name': line_stripped}
+            
+            # Extract account type
+            elif 'type' in line_stripped.lower() or any(atype in line_stripped.lower() for atype in ['credit card', 'auto loan', 'mortgage', 'student loan', 'personal', 'installment', 'revolving', 'fixed']):
+                if current_account:
+                    match = re.search(r'(credit\s+card|auto\s+loan|mortgage|student\s+loan|personal|charge\s+card|home\s+equity|installment|revolving|fixed)', line_stripped, re.IGNORECASE)
+                    if match:
+                        current_account['type'] = self.normalize_account_type(match.group(1))
+            
+            # Extract balance/current balance
+            elif re.search(r'(balance|owed|current balance|amount due)\s*[:\-]?\s*[\$]?[\d,\.]+', line_stripped, re.IGNORECASE):
+                if current_account:
+                    match = re.search(r'(balance|owed|amount due|current balance)\s*[:\-]?\s*[\$]?([\d,\.]+)', line_stripped, re.IGNORECASE)
+                    if match:
+                        try:
+                            balance_str = match.group(2).replace(',', '')
+                            current_account['balance'] = float(balance_str)
+                        except:
+                            pass
+            
+            # Extract credit limit
+            elif re.search(r'(limit|credit limit|high credit|max)\s*[:\-]?\s*[\$]?[\d,\.]+', line_stripped, re.IGNORECASE):
+                if current_account:
+                    match = re.search(r'(limit|credit limit|high credit|max)\s*[:\-]?\s*[\$]?([\d,\.]+)', line_stripped, re.IGNORECASE)
+                    if match:
+                        try:
+                            limit_str = match.group(2).replace(',', '')
+                            current_account['limit'] = float(limit_str)
+                        except:
+                            pass
+            
+            # Extract status
+            elif re.search(r'(status|account status|condition)\s*[:\-]?\s*', line_stripped, re.IGNORECASE):
+                if current_account:
+                    match = re.search(r'(status|condition)\s*[:\-]?\s*(.+)', line_stripped, re.IGNORECASE)
+                    if match:
+                        current_account['status'] = self.normalize_status(match.group(2))
+            
+            # Extract date opened
+            elif re.search(r'(opened|date opened|opened date|since)\s*[:\-]?\s*', line_stripped, re.IGNORECASE):
+                if current_account:
+                    match = re.search(r'(opened|opened date|since)\s*[:\-]?\s*(.+)', line_stripped, re.IGNORECASE)
+                    if match:
+                        parsed_date = self.parse_date(match.group(2))
+                        if parsed_date:
+                            current_account['open_date'] = parsed_date
+        
+        if current_account and 'name' in current_account:
+            accounts.append(current_account)
+        
+        # Validate and set defaults
+        return self._validate_accounts(accounts)
+    
+    def _looks_like_account_name(self, text: str) -> bool:
+        """Heuristic to identify if text is likely an account name"""
+        if len(text) < 3 or len(text) > 100:
+            return False
+        
+        # EXCLUDE: These are definitely not account names
+        exclude_keywords = [
+            'balance', 'status', 'opened', 'limit', 'type:', 'page', 'credit karma',
+            'report', 'accounts', 'total', 'summary', 'score', 'rating',  'inquiry',
+            'derogatory', 'payment', 'history', 'utilization', 'percentage', 'annual', 'monthly',
+            'your', 'the', 'and', 'or', 'account number', 'inquiries', 'accounts'
+        ]
+        
+        text_lower = text.lower()
+        for keyword in exclude_keywords:
+            if keyword in text_lower:
+                return False
+        
+        # EXCLUDE: Line with currency amounts
+        if '$' in text and re.search(r'\$\s*[\d,]+', text):
+            return False
+        
+        # EXCLUDE: Date format lines
+        if re.search(r'^\d{1,2}/\d{1,2}/\d{2,4}$', text):
+            return False
+        
+        # EXCLUDE: Just numbers
+        if re.search(r'^\d+$', text):
+            return False
+        
+        # INCLUDE: Known financial institutions (strong match)
+        strong_indicators = [
+            'chase', 'bank of america', 'Wells Fargo', 'wells', 'citibank', 'amex', 
+            'american express', 'discover', 'capital one', 'barclays', 'synchrony', 
+            'us bank', 'navy federal'
+        ]
+        
+        for indicator in strong_indicators:
+            if indicator.lower() in text_lower:
+                return True
+        
+        # INCLUDE: Contains specific account type keywords
+        if any(x.lower() in text_lower for x in ['credit card', 'checking', 'savings', 'auto loan', 'mortgage']):
+            return True
+        
+        # Only accept capitalized phrases that are truly account-like
+        # Single word: max 20 chars (like "Chase" or "Discover")
+        if len(text.split()) == 1:
+            if text[0].isupper() and 3 <= len(text) <= 20:
+                # But exclude common generic words
+                if text.lower() not in ['account', 'total', 'payment', 'balance']:
+                    return True
+        
+        # Two-three words: like "Chase Sapphire" or "Bank of America"
+        elif 2 <= len(text.split()) <= 3:
+            # All words must be capitalized
+            words = text.split()
+            if all(word and word[0].isupper() for word in words):
+                # Must not be a sentence (no verbs)
+                if not any(word.lower() in ['is', 'was', 'are', 'been', 'have', 'has', 'does'] for word in words):
+                    # Additional check: not too short per word (avoids "A B C" etc)
+                    if all(len(word) >= 2 for word in words):
+                        return True
+        
+        return False
+    
+    def _validate_accounts(self, accounts: List[Dict]) -> List[Dict]:
+        """Validate and clean extracted accounts"""
+        validated = []
+        
+        for account in accounts:
+            if 'name' not in account or not account['name']:
+                continue
+            
+            # Set defaults
+            if 'type' not in account:
+                account['type'] = 'other'
+            if 'balance' not in account:
+                account['balance'] = 0.0
+            if 'open_date' not in account:
+                account['open_date'] = date.today().strftime('%Y-%m-%d')
+            if 'status' not in account:
+                account['status'] = 'active'
+            
+            validated.append(account)
+        
+        return validated
+
+
 def extract_text_from_pdf(pdf_path: str) -> str:
     """Extract text from PDF file"""
     try:
@@ -599,24 +773,42 @@ def parse_credit_report(file_path: str, bureau: Bureau) -> Tuple[List[Dict], str
         # Extract text from file (PDF or TXT)
         if file_path.lower().endswith('.pdf'):
             text = extract_text_from_pdf(file_path)
+            print(f"PDF text extraction successful. Extracted {len(text)} characters")
+            print(f"First 500 chars: {text[:500]}")
         else:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 text = f.read()
+            print(f"TXT file read. Extracted {len(text)} characters")
 
         # If no usable text, try OCR fallback
         if not text or len(text.strip()) < 120:
+            print(f"Text too short ({len(text)} chars), attempting OCR...")
             try:
                 ocr_text = extract_text_with_ocr(file_path)
                 if ocr_text and len(ocr_text.strip()) > 50:
+                    print(f"OCR successful, extracted {len(ocr_text)} characters")
                     text = ocr_text
-            except Exception:
-                # OCR not available or failed - continue
+            except Exception as e:
+                print(f"OCR failed: {str(e)}")
                 pass
 
         if not text or len(text.strip()) < 100:
             return [], "Could not extract sufficient text from file"
         
-        # Select appropriate extractor
+        print(f"\n=== PARSING WITH BUREAU: {bureau.value.upper()} ===")
+        
+        # Try Credit Karma extractor first (works universally for Credit Karma format)
+        if 'credit karma' in text.lower():
+            print(f"Detected 'Credit Karma' in text, using CreditKarmaExtractor...")
+            ck_extractor = CreditKarmaExtractor(text)
+            accounts = ck_extractor.extract_accounts()
+            print(f"CreditKarmaExtractor returned {len(accounts)} accounts")
+            if accounts:
+                status = f"Successfully extracted {len(accounts)} account(s) from Credit Karma report"
+                return accounts, status
+        
+        # Select appropriate extractor based on bureau
+        print(f"Using bureau-specific extractor: {bureau.value}")
         if bureau == Bureau.EQUIFAX:
             extractor = EquifaxExtractor(text)
         elif bureau == Bureau.EXPERIAN:
@@ -628,13 +820,28 @@ def parse_credit_report(file_path: str, bureau: Bureau) -> Tuple[List[Dict], str
         
         # Extract accounts using extractor heuristics
         accounts = extractor.extract_accounts()
+        print(f"Bureau extractor returned {len(accounts)} accounts")
 
         # Additional heuristic pass: use extractor's fallback heuristics to find creditor blocks
         if not accounts:
+            print(f"No accounts found, trying additional heuristics...")
             accounts = extractor.run_additional_heuristics()
+            print(f"Additional heuristics returned {len(accounts)} accounts")
+        
+        # If still no accounts, try Credit Karma extractor as last resort
+        if not accounts:
+            print(f"Still no accounts, trying CreditKarmaExtractor as fallback...")
+            ck_extractor = CreditKarmaExtractor(text)
+            accounts = ck_extractor.extract_accounts()
+            print(f"CreditKarmaExtractor fallback returned {len(accounts)} accounts")
         
         status = f"Successfully extracted {len(accounts)} account(s) from {bureau.value} report"
+        print(f"Final result: {status}")
+        print(f"=== PARSING COMPLETE ===\n")
         return accounts, status
     
     except Exception as e:
+        import traceback
+        print(f"ERROR during parsing: {str(e)}")
+        traceback.print_exc()
         return [], f"Error parsing report: {str(e)}"

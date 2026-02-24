@@ -70,13 +70,21 @@ export default function CreditReportUpload({ onClose }: { onClose: () => void })
     }
 
     if (!currentProfileId) {
-      toast.error('Please select a profile first')
+      toast.error('Please create and select a profile first')
       return
     }
 
     try {
       setLoading(true)
+      console.log('Starting upload for profile:', currentProfileId, 'bureau:', bureau, 'file:', file.name)
+      
       const result = await apiClient.uploadCreditReport(currentProfileId, bureau, file)
+      
+      console.log('Upload result:', result)
+      
+      if (!result.accounts || !Array.isArray(result.accounts)) {
+        throw new Error('Invalid response format: accounts is not an array')
+      }
       
       // convert accounts to editable form
       setExtractedAccounts(result.accounts.map((a: any) => ({
@@ -87,10 +95,12 @@ export default function CreditReportUpload({ onClose }: { onClose: () => void })
       // Auto-select all accounts by default
       setSelectedAccounts(new Set(Array.from({ length: result.accounts.length }, (_, i) => i)))
       
+      console.log(`Successfully extracted ${result.accounts.length} account(s)`)
       toast.success(`Extracted ${result.accounts.length} account(s)`)
     } catch (err) {
-      toast.error('Failed to upload credit report')
-      console.error(err)
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      console.error('Upload error:', errorMsg)
+      toast.error(`Failed to upload credit report: ${errorMsg}`)
     } finally {
       setLoading(false)
     }
@@ -384,10 +394,11 @@ export default function CreditReportUpload({ onClose }: { onClose: () => void })
       <div className="flex gap-3">
         <button
           onClick={handleUpload}
-          disabled={loading || !file}
-          className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white rounded font-semibold transition"
+          disabled={loading || !file || !currentProfileId}
+          title={!currentProfileId ? 'Create and select a profile first' : !file ? 'Select a file' : ''}
+          className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white rounded font-semibold transition"
         >
-          {loading ? 'Uploading...' : 'Upload & Extract'}
+          {!currentProfileId ? 'Create profile first' : !file ? 'Select file' : loading ? 'Uploading...' : 'Upload & Extract'}
         </button>
         <button
           onClick={onClose}
