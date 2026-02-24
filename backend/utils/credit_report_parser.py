@@ -196,94 +196,188 @@ class AccountExtractor:
 
 
 class EquifaxExtractor(AccountExtractor):
-    """Extract accounts from Equifax credit report"""
+    """Extract accounts from Equifax credit report using block-based structure"""
     
     def extract_accounts(self) -> List[Dict]:
-        """Extract accounts from Equifax format"""
+        """
+        Extract accounts from Equifax format using block segmentation.
+        
+        Equifax uses structured account blocks like:
+        CREDITOR NAME - STATUS
+        Balance: $XXX
+        Account Number: *XXXX
+        Loan Type: ...
+        Date Opened: XX/XX/XXXX
+        
+        This parser splits on account headers and extracts fields from each block.
+        """
         accounts = []
+        text = self.text
         
-        # Equifax format typically has "TRADELINE" or account blocks
-        # Pattern varies, so we look for common indicators
+        # Pattern to split account blocks
+        # Matches: CREDITOR NAME - STATUS (at start of line or after whitespace)
+        # where STATUS is "Closed", "Charge Off", "Collections", "Pays As Agreed", "Open", etc.
+        account_header_pattern = r'\n([A-Z][A-Z0-9\s/,&.\-]*?(?:BANK|FINANCE|CREDIT|LLC|INC|CORPORATION|SERVICES|AUTO|CAPITAL|PREMIER|ONE|MANAGEMENT|CORP)?[A-Z0-9]*?)\s*[-–—]\s*(Closed|Charge\s+Off|Charged\s+Off|Open|Pays\s+As\s+Agreed|Current|30\s*Days?|60\s*Days?|90\s*Days?|120\s*Days?|Collections?|Collection\s+Account|Delinquent|Past\s+Due)'
         
+        print(f"[EquifaxExtractor] Starting block-based extraction...")
+        
+        # Split text into blocks
+        blocks = re.split(account_header_pattern, text)
+        print(f"[EquifaxExtractor] Split text into {len(blocks)} segments (including separators)")
+        
+        # Process pairs of (creditor_name, status, block_text)
+        i = 1
+        block_count = 0
+        while i < len(blocks) - 1:
+            creditor_name = blocks[i].strip()
+            status = blocks[i + 1].strip()
+            
+            # Skip empty names or if there's no block text
+            if not creditor_name or len(creditor_name) < 3:
+                print(f"[EquifaxExtractor] Skipping empty or short creditor name at block {i}")
+                i += 3
+                continue
+            
+            block_count += 1
+            print(f"[EquifaxExtractor] Block {block_count}: {creditor_name} - {status}")
+            
+            # Get the text until the next account block or end
+            if i + 3 < len(blocks):
+                block_text = blocks[i + 2]
+            else:
+                block_text = text
+            
+            # Extract account from this block
+            account = self._extract_from_block(creditor_name, status, block_text)
+            if account:
+                print(f"[EquifaxExtractor]   ✓ Extracted: {account['name']} | ${account.get('balance', 0)} | {account.get('status')}")
+                accounts.append(account)
+            else:
+                print(f"[EquifaxExtractor]   ✗ Failed to extract account from block")
+            
+            i += 3
+        
+        print(f"[EquifaxExtractor] Block-based extraction found {len(accounts)} accounts")
+        return accounts if accounts else self._fallback_extraction()
+    
+    def _extract_from_block(self, creditor_name: str, status_str: str, block_text: str) -> Optional[Dict]:
+        """Extract account details from a single account block"""
+        
+        # Creditor name cleanup
+        name = creditor_name.strip().title()
+        
+        # Extract balance
+        balance = 0.0
+        balance_match = re.search(r'balance\s*[:\-]?\s*\$?([\d,]+(?:\.\d{2})?)', block_text, re.IGNORECASE)
+        if balance_match:
+            try:
+                balance = float(balance_match.group(1).replace(',', ''))
+                print(f"[EquifaxExtractor] Found balance: ${balance}")
+            except ValueError:
+                balance = 0.0
+        
+        # Extract account number
+        account_number = None
+        acct_match = re.search(r'account\s+number\s*[:\-]?\s*\*?([A-Z0-9]+)', block_text, re.IGNORECASE)
+        if acct_match:
+            account_number = acct_match.group(1).strip()
+            print(f"[EquifaxExtractor] Found account number: {account_number}")
+        
+        # Extract account type
+        account_type = 'other'
+        type_match = re.search(r'(?:loan|account)\s*/?[/]?type\s*[:\-]?\s*(.+?)(?:\n|$)', block_text, re.IGNORECASE)
+        if type_match:
+            type_str = type_match.group(1).strip()
+            account_type = self.normalize_account_type(type_str)
+            print(f"[EquifaxExtractor] Found account type: {type_str} → {account_type}")
+        
+        # Extract credit limit (for revolving accounts)
+        limit = None
+        limit_match = re.search(r'(?:credit\s+limit|limit|credit line)\s*[:\-]?\s*\$?([\d,]+(?:\.\d{2})?)', block_text, re.IGNORECASE)
+        if limit_match:
+            try:
+                limit_val = float(limit_match.group(1).replace(',', ''))
+                if limit_val > 0:
+                    limit = limit_val
+                    print(f"[EquifaxExtractor] Found credit limit: ${limit}")
+            except ValueError:
+                pass
+        
+        # Extract high credit (also used for limit)
+        if not limit:
+            high_credit_match = re.search(r'high\s+credit\s*[:\-]?\s*\$?([\d,]+(?:\.\d{2})?)', block_text, re.IGNORECASE)
+            if high_credit_match:
+                try:
+                    limit = float(high_credit_match.group(1).replace(',', ''))
+                    print(f"[EquifaxExtractor] Found high credit: ${limit}")
+                except ValueError:
+                    pass
+        
+        # Extract date opened
+        open_date = date.today().isoformat()
+        date_match = re.search(r'date\s+(?:opened|open)\s*[:\-]?\s*(\d{1,2}/\d{1,2}/\d{2,4})', block_text, re.IGNORECASE)
+        if date_match:
+            parsed = self.parse_date(date_match.group(1))
+            if parsed:
+                open_date = parsed
+                print(f"[EquifaxExtractor] Found date opened: {open_date}")
+        
+        # Normalize status
+        normalized_status = self.normalize_status(status_str)
+        print(f"[EquifaxExtractor] Normalized status: {status_str} → {normalized_status}")
+        
+        return {
+            'name': name,
+            'type': account_type,
+            'balance': balance,
+            'limit': limit,
+            'open_date': open_date,
+            'status': normalized_status,
+        }
+    
+    def _fallback_extraction(self) -> List[Dict]:
+        """Fallback: use line-by-line extraction if block segmentation fails"""
+        accounts = []
         lines = self.lines
         current_account = {}
         
-        for i, line in enumerate(lines):
+        for line in lines:
             line_stripped = line.strip()
             
-            # Look for account identifiers
-            if re.search(r'(creditor|account|tradeline)', line_stripped, re.IGNORECASE):
+            # Look for standalone creditor names (all caps, no labels)
+            if re.match(r'^[A-Z][A-Z0-9\s/,&.\-]*$', line_stripped) and len(line_stripped) > 5 and len(line_stripped) < 80:
+                # This might be an account name header
                 if current_account and 'name' in current_account:
                     accounts.append(current_account)
-                current_account = {}
+                current_account = {'name': line_stripped.title()}
+                continue
             
-            # Extract account name
-            if re.search(r'(creditor|account)\s*[:\-]?\s*(.+)', line_stripped, re.IGNORECASE):
-                match = re.search(r'(creditor|account)\s*[:\-]?\s*(.+)', line_stripped, re.IGNORECASE)
-                if match:
-                    current_account['name'] = match.group(2).strip()
-            
-            # Extract account type
-            if re.search(r'type\s*[:\-]?\s*(.+)', line_stripped, re.IGNORECASE):
-                match = re.search(r'type\s*[:\-]?\s*(.+)', line_stripped, re.IGNORECASE)
-                if match:
-                    current_account['type'] = self.normalize_account_type(match.group(1))
-            
-            # Extract balance
-            if re.search(r'(balance|amount owed|current balance)\s*[:\-]?\s*([\d,$.]+)', line_stripped, re.IGNORECASE):
-                match = re.search(r'(balance|amount owed|current balance)\s*[:\-]?\s*([\d,$.]+)', line_stripped, re.IGNORECASE)
-                if match:
-                    balance = self.parse_currency(match.group(2))
-                    if balance is not None:
-                        current_account['balance'] = balance
-            
-            # Extract limit
-            if re.search(r'(credit limit|limit|high credit)\s*[:\-]?\s*([\d,$.]+)', line_stripped, re.IGNORECASE):
-                match = re.search(r'(credit limit|limit|high credit)\s*[:\-]?\s*([\d,$.]+)', line_stripped, re.IGNORECASE)
-                if match:
-                    limit = self.parse_currency(match.group(2))
-                    if limit is not None:
-                        current_account['limit'] = limit
+            # Extract balance from labeled lines
+            balance_match = re.search(r'balance\s*[:\-]?\s*\$?([\d,]+(?:\.\d{2})?)', line_stripped, re.IGNORECASE)
+            if balance_match:
+                try:
+                    current_account['balance'] = float(balance_match.group(1).replace(',', ''))
+                except ValueError:
+                    pass
             
             # Extract status
-            if re.search(r'(status|account status)\s*[:\-]?\s*(.+)', line_stripped, re.IGNORECASE):
-                match = re.search(r'(status|account status)\s*[:\-]?\s*(.+)', line_stripped, re.IGNORECASE)
-                if match:
-                    current_account['status'] = self.normalize_status(match.group(2))
-            
-            # Extract open date
-            if re.search(r'(open|opened|date opened)\s*[:\-]?\s*(.+)', line_stripped, re.IGNORECASE):
-                match = re.search(r'(open|opened|date opened)\s*[:\-]?\s*(.+)', line_stripped, re.IGNORECASE)
-                if match:
-                    parsed_date = self.parse_date(match.group(2))
-                    if parsed_date:
-                        current_account['open_date'] = parsed_date
+            status_match = re.search(r'status\s*[:\-]?\s*(.+)$', line_stripped, re.IGNORECASE)
+            if status_match and 'status' not in current_account:
+                current_account['status'] = self.normalize_status(status_match.group(1))
         
-        # Add last account
         if current_account and 'name' in current_account:
             accounts.append(current_account)
         
-        return self._validate_accounts(accounts)
-    
-    def _validate_accounts(self, accounts: List[Dict]) -> List[Dict]:
-        """Validate and clean extracted accounts"""
+        # Validate and set defaults
         validated = []
-        
         for account in accounts:
-            if 'name' not in account or not account['name']:
-                continue
-            
-            # Set defaults
-            if 'type' not in account:
-                account['type'] = 'other'
-            if 'balance' not in account:
-                account['balance'] = 0.0
-            if 'open_date' not in account:
-                account['open_date'] = date.today().strftime('%Y-%m-%d')
-            if 'status' not in account:
-                account['status'] = 'active'
-            
-            validated.append(account)
+            if 'name' in account and len(account['name'].strip()) > 3:
+                account.setdefault('type', 'other')
+                account.setdefault('balance', 0.0)
+                account.setdefault('limit', None)
+                account.setdefault('open_date', date.today().isoformat())
+                account.setdefault('status', 'active')
+                validated.append(account)
         
         return validated
 
